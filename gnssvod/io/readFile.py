@@ -11,6 +11,7 @@ import time
 import datetime
 import numpy as np
 import pandas as pd
+import pdb
 from gnssvod.download import get_rinex, get_ionosphere
 from gnssvod.funcs.checkif import (isfloat, isint, isexist)
 from gnssvod.funcs.date import doy2date
@@ -211,7 +212,6 @@ def read_obsFile_v2(observationFile,header=False):
     line = 0
     ToB = []
     head = dict()
-    import pdb
     while True:
         if 'RINEX VERSION / TYPE' in obsLines[line]:
             version = obsLines[line][0:-21].split()[0]
@@ -496,6 +496,92 @@ def read_obsFile_v3(obsFileName,header):
     obsList = []
     svList= []
     epochList = []
+    currentline = 0
+    last_update = start
+    while True:
+        if time.time()-last_update>30:
+            # print an update on the progress every 30 seconds
+            last_update = time.time()
+            print(f'Processed {currentline} out of {len(obsLines)} lines ({currentline/len(obsLines)*100:.1f}%)')
+        # =============================================================================
+        while True:
+            if 'COMMENT' in obsLines[currentline]:
+                currentline += 1
+            elif 'APPROX POSITION XYZ' in obsLines[currentline]:
+                currentline += 1
+            elif 'REC # / TYPE / VERS' in obsLines[currentline]:
+                raise Warning("Receiver type is changed! | Exiting...")
+            else:
+                break
+        # =============================================================================
+        if obsLines[currentline][0] == ">":
+            epochLine = obsLines[currentline][1:].split()
+            if len(epochLine) == 8:
+                epoch_year, epoch_month, epoch_day, epoch_hour, epoch_minute, epoch_second, epoch_flag, epoch_SVNumber = obsLines[currentline][1:].split()
+                receiver_clock = 0 
+            elif len(epochLine) == 9:
+                epoch_year, epoch_month, epoch_day, epoch_hour, epoch_minute, epoch_second, epoch_flag, epoch_SVNumber, receiver_clock = obsLines[currentline][1:].split()
+            else: 
+                raise Warning("Unexpected epoch line format detected! | Program stopped!")
+        else: 
+            if currentline+1 == len(obsLines):
+                # sometimes the last line is weird, especially if logging was interrupted
+                print("The last line has an unexpected format and will be ignored")
+                break # stop reading file
+            else:
+                print(f"Unexpected format detected! | Tentatively skipping line #{currentline}")
+                currentline += 1
+                continue # skip remainder of loop
+        # =========================================================================
+        if epoch_flag in {"1","3","5","6"}:
+            raise Warning("Deal with this later!")
+        elif epoch_flag == "4":
+            currentline += 1
+            while True:
+                if 'COMMENT' in obsLines[currentline]:
+                    print(obsLines[currentline])
+                    currentline += 1
+                elif 'SYS / PHASE SHIFT' in obsLines[currentline]:
+                    currentline +=1
+                else: 
+                    break
+        else:
+            # =========================================================================
+            epoch = datetime.datetime(year = int(epoch_year), 
+                                    month = int(epoch_month),
+                                    day = int(epoch_day),
+                                    hour = int(epoch_hour),
+                                    minute = int(epoch_minute),
+                                    second = int(float(epoch_second)))
+            epochList.append(epoch)
+            currentline += 1 # move beyond header line
+            # =============================================================================
+            epoch_SVNumber = int(epoch_SVNumber)
+            for svLine in range(currentline,currentline+epoch_SVNumber):
+                obsEpoch = np.full((1,len(ToB)), None)
+                svList.append(obsLines[svLine][:3])
+                if obsLines[svLine].startswith("G"):
+                    obsEpoch[0,index_GPS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_GPS)*16,16)]])
+                elif obsLines[svLine].startswith("R"):
+                    obsEpoch[0,index_GLONASS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_GLONASS)*16,16)]])
+                    #obsEpoch[svLine,index_GLONASS]
+                elif obsLines[svLine].startswith("E"):
+                    obsEpoch[0,index_GALILEO] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_GALILEO)*16,16)]])
+                elif obsLines[svLine].startswith("C"):
+                    obsEpoch[0,index_COMPASS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_COMPASS)*16,16)]])
+                elif obsLines[svLine].startswith("J"):
+                    obsEpoch[0,index_QZSS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_QZSS)*16,16)]])
+                elif obsLines[svLine].startswith("I"):
+                    obsEpoch[0,index_IRSS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_IRSS)*16,16)]])
+                elif obsLines[svLine].startswith("S"):
+                    obsEpoch[0,index_SBAS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_SBAS)*16,16)]])
+                obsEpoch = np.append(obsEpoch,epoch)
+                obsList.append(obsEpoch)
+            # =============================================================================
+            currentline += epoch_SVNumber # number of rows in epoch equals number of visible satellites in RINEX 3
+        if currentline == len(obsLines):
+            break
+    """
     while True:
         # =============================================================================
         while True:
@@ -570,6 +656,7 @@ def read_obsFile_v3(obsFileName,header):
             del obsLines[0:epoch_SVNumber] # number of rows in epoch equals number of visible satellites in RINEX 3
         if len(obsLines) == 0:
             break
+    """
     # =============================================================================
     columnNames = ToB
     columnNames = np.append(ToB,'Epoch')

@@ -190,7 +190,6 @@ def sp3_interp(epoch, interval=30, poly_degree=16, sp3_product="gfz", clock_prod
     interp_coord = _pd.DataFrame(index= index, columns = header)
     interp_coord = interp_coord.reorder_levels(['Epoch', 'SV'])
     interp_coord = interp_coord.sort_index()
-    pdb.set_trace()
     while True:
         sp3_temp = sp3.loc[(slice(epoch_start,epoch_stop))].copy()
         sp3_temp = sp3_temp.reorder_levels(["SV","Epoch"])
@@ -220,7 +219,6 @@ def sp3_interp(epoch, interval=30, poly_degree=16, sp3_product="gfz", clock_prod
             sv_interp = _np.vstack((x_interp[:-1], y_interp[:-1], z_interp[:-1], x_velocity[:-1], y_velocity[:-1], z_velocity[:-1])).transpose()
             epoch_interp_List[:,:,svIndex] = sv_interp
             fitTime = _np.linspace(0, deltaT.seconds*16 , 17) # restore original fitTime in case it has changed!
-            pdb.set_trace()
         interp_coord.loc[(slice(epoch_start+timedelta(minutes=30),epoch_stop-timedelta(minutes=30,seconds=1))), ('X', 'Y', 'Z', 'Vx', 'Vy', 'Vz')] = epoch_interp_List.transpose(1,0,2).reshape(6,-1).transpose()
         epoch_start += epoch_step
         epoch_stop += epoch_step

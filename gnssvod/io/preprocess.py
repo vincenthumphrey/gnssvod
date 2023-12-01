@@ -12,7 +12,6 @@ import datetime
 import numpy as np
 import pandas as pd
 import xarray as xr
-import multiprocessing
 from gnssvod.io.readFile import read_obsFile
 from gnssvod.funcs.checkif import (isfloat, isint, isexist)
 from gnssvod.funcs.date import doy2date
@@ -25,7 +24,13 @@ import pdb
 #-------------------------------------------------------------------------
 #----------------- FILE SELECTION AND BATCH PROCESSING -------------------
 #-------------------------------------------------------------------------
-def preprocess(filepattern,orbit=True,interval=None,keepvars=None,nworkers=None,outputdir=None):
+def preprocess(filepattern,
+               orbit=True,
+               interval=None,
+               keepvars=None,
+               outputdir=None,
+               overwrite=False,
+               outputresult=False):
     """
     Returns lists of Observation objects containing GNSS observations read from RINEX observation files
     
@@ -48,15 +53,19 @@ def preprocess(filepattern,orbit=True,interval=None,keepvars=None,nworkers=None,
         For example keepvars = ['S1','S2','Azimuth','Elevation']
         If None, no columns are removed
         
-    nworkers: int or None (optional)
-        if int, will open a multiprocessing pool with nworkers to read the obs files in parallel
-        
     outputdir: dictionary (optional)
         A dictionary of station names and folders indicating where to save the preprocessed data
         For example outputdir={'station1':'/path/where/to/save/preprocessed/data'}
         Dictionary keys must be the same as in the filepattern argument
         Data will be saved as a netcdf file, recycling the original file name
-        If this argument is None, data will be returned in a list but not saved
+        If this argument is None, data won't be saved
+
+    overwrite: bool (optional)
+        If False (default), RINEX files with an existing matching files in the 
+        specified output directory will be skipped entirely
+
+    outputresult: bool (optional)
+        If True, observation objects will also be returned as a dictionary
         
     Returns
     -------
@@ -64,6 +73,9 @@ def preprocess(filepattern,orbit=True,interval=None,keepvars=None,nworkers=None,
     For example output={'station1':[gnssvod.io.io.Observation,gnssvod.io.io.Observation,...]}
     
     """
+    if keepvars is not None:
+        keepvars = np.unique(np.concatenate((keepvars,['epoch','SYSTEM'])))
+
     # grab all files matching the patterns
     filelist = get_filelist(filepattern)
     
@@ -71,64 +83,84 @@ def preprocess(filepattern,orbit=True,interval=None,keepvars=None,nworkers=None,
     for item in filelist.items():
         station_name = item[0]
         filelist = item[1]
-        
-        # open a pool to read and resample files in parallel if requested
-        if nworkers:
-            print(f"Starting parallel processing Pool with {nworkers} workers")
-            pool = multiprocessing.Pool(nworkers)
-            result = pool.map(read_obsFile,filelist)
-            if interval:
-                result = pool.starmap(resample_obs,[(x,interval) for x in result])
-            pool.close()
-        # else process files iteratively
+
+        # checking which files will be skipped (if necessary)
+        if (not overwrite) and (outputdir is not None):
+            # gather all files that already exist in the outputdir
+            files_to_skip = get_filelist({station_name:f"{outputdir[station_name]}*.nc"})
+            files_to_skip = [os.path.basename(x) for x in files_to_skip[station_name]]
         else:
-            result = [read_obsFile(x) for x in filelist]
-            if interval:
-                result = [resample_obs(x,interval) for x in result]
+            files_to_skip = []
+        
+        # for each file
+        result = []
+        for i,filename in enumerate(filelist):
+            # determine the name of the output file that will be saved at the end of the loop
+            out_name = os.path.splitext(os.path.basename(filename))[0]+'.nc'
+            # if the name of the saved output file is in the files to skip, skip processing
+            if out_name in files_to_skip:
+                print(f"{out_name} already exists, skipping.. (pass overwrite=True to overwrite)")
+                continue # skip remainder of loop and go directly to next filename
             
-        # for each pandas Observation dataframe iteratively
-        for i,x in enumerate(result):
-            if orbit:
-                print(f"Calculating Azimuth and Elevation ({i+1} out of {len(result)})")
-                # note: orbit cannot be parallelized easily because it 
-                # downloads and unzips third-party files in the current directory
-                if i==0:
-                    # on the first iteration, the orbit data is returned as well
-                    x, orbit_data = add_azi_ele(x)
-                else:
-                    # on following iterations the orbit data is tentatively recycled to reduce computational time
-                    x, orbit_data = add_azi_ele(x, orbit_data)
-            # make sure we drop any duplicates
-            x.observation=x.observation[~x.observation.index.duplicated(keep='first')]
+            # read in the file
+            x = read_obsFile(filename)
+            print(f"Processing {len(x.observation):n} individual observations")
+
             # only keep required vars and drop potential empty rows
             if keepvars is not None:
                 x.observation = x.observation[keepvars].dropna(how='all')
                 x.observation_types = keepvars
-            # store result
-            result[i]=x
-        out[station_name]=result
-    
-    # output the files
-    if outputdir:
-        for item in out.items():
-            # recover list of observation objects and output directory
-            station_name = item[0]
-            list_of_obs = item[1]
-            ioutputdir = outputdir[station_name]
-            # check that the output directory exists for that station
-            if not os.path.exists(ioutputdir):
-                os.makedirs(ioutputdir)
-            for obs in list_of_obs:
-                ds = obs.observation.to_xarray()
-                ds.attrs['filename'] = obs.filename
-                ds.attrs['observation_types'] = obs.observation_types
-                ds.attrs['epoch'] = obs.epoch.isoformat()
-                ds.attrs['approx_postion'] = obs.approx_position
-                ds_name = os.path.splitext(os.path.basename(ds.attrs['filename']))[0]+'.nc'
-                ds.to_netcdf(os.path.join(ioutputdir,ds_name))
-            print(f"Saved {len(list_of_obs)} processed files in {ioutputdir}")
                 
-    return out
+            # resample if required
+            if interval is not None:
+                x = resample_obs(x,interval)
+                
+            # calculate Azimuth and Elevation if required
+            if orbit:
+                print(f"Calculating Azimuth and Elevation")
+                # note: orbit cannot be parallelized easily because it 
+                # downloads and unzips third-party files in the current directory
+                if not 'orbit_data' in locals():
+                    # if there is no previous orbit data, the orbit data is returned as well
+                    x, orbit_data = add_azi_ele(x)
+                else:
+                    # on following iterations the orbit data is tentatively recycled to reduce computational time
+                    x, orbit_data = add_azi_ele(x, orbit_data)
+            
+            # make sure we drop any duplicates
+            x.observation=x.observation[~x.observation.index.duplicated(keep='first')]
+            
+            # store result in memory
+            if outputresult:
+                result[i]=x
+                
+            # write to file if required
+            if outputdir is not None:
+                ioutputdir = outputdir[station_name]
+                # check that the output directory exists
+                if not os.path.exists(ioutputdir):
+                    os.makedirs(ioutputdir)
+                # delete file if it exists
+                out_path = os.path.join(ioutputdir,out_name)
+                if os.path.exists(out_path):
+                    os.remove(out_path)
+                # save as NetCDF
+                ds = x.observation.to_xarray()
+                ds.attrs['filename'] = x.filename
+                ds.attrs['observation_types'] = x.observation_types
+                ds.attrs['epoch'] = x.epoch.isoformat()
+                ds.attrs['approx_postion'] = x.approx_position
+                ds.to_netcdf(out_path)
+                print(f"Saved {len(x.observation):n} individual observations in {out_name}")
+                
+        # store station in memory if required
+        if outputresult:
+            out[station_name]=result
+
+    if outputresult:
+        return out
+    else:
+        return
 
 def resample_obs(obs,interval):
     obs.observation = obs.observation.groupby([pd.Grouper(freq=interval, level='Epoch'),pd.Grouper(level='SV')]).mean()
@@ -141,7 +173,7 @@ def add_azi_ele(obs, orbit_data=None):
     if orbit_data is None:
         do = True
     elif (orbit_data.my_epoch==obs.epoch) and (orbit_data.my_interval==obs.interval):
-        # if the orbit for the day corresponding to the epoch and interval is the same as the one that was passed, just reuse it. This drastically reduces the number of times orbit files have to be read.
+        # if the orbit for the day corresponding to the epoch and interval is the same as the one that was passed, just reuse it. This drastically reduces the number of times orbit files have to be read and interpolated.
         do = False
     else:
         do = True
@@ -157,7 +189,7 @@ def add_azi_ele(obs, orbit_data=None):
         orbit = orbit_data
     
     # calculate the gnss parameters (including azimuth and elevation)
-    gnssdf = gnssDataframe(obs,orbit)  
+    gnssdf = gnssDataframe(obs,orbit)
     # add the gnss parameters to the observation dataframe
     obs.observation = obs.observation.join(gnssdf[['Azimuth','Elevation']])
     return obs, orbit_data
