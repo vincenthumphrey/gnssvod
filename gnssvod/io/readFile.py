@@ -345,6 +345,7 @@ def read_obsFile_v2(observationFile,header=False):
             break
     columnNames = ToB[1:]
     columnNames.append('Epoch')
+    SVList = [x.replace(' ','0') if x[1]==' ' else x for x in SVList] # replace 'G 1' with 'G01' (etc)
     observation = pd.DataFrame(obsList, index=SVList, columns=columnNames)
     observation.index.name = 'SV'
     observation['epoch'] = observation.Epoch
@@ -529,7 +530,7 @@ def read_obsFile_v3(obsFileName,header):
                 print("The last line has an unexpected format and will be ignored")
                 break # stop reading file
             else:
-                print(f"Unexpected format detected! | Tentatively skipping line #{currentline}")
+                print(f"\033[93mUnexpected format detected! | Tentatively skipping line #{currentline}")
                 currentline += 1
                 continue # skip remainder of loop
         # =========================================================================
@@ -660,6 +661,7 @@ def read_obsFile_v3(obsFileName,header):
     # =============================================================================
     columnNames = ToB
     columnNames = np.append(ToB,'Epoch')
+    svList = [x.replace(' ','0') if x[1]==' ' else x for x in svList] # replace 'G 1' with 'G01' (etc)
     obs = pd.DataFrame(obsList, index=svList, columns=columnNames)
     obs.index.name = 'SV'
     obs['epoch'] = obs.Epoch 

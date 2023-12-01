@@ -73,9 +73,6 @@ def preprocess(filepattern,
     For example output={'station1':[gnssvod.io.io.Observation,gnssvod.io.io.Observation,...]}
     
     """
-    if keepvars is not None:
-        keepvars = np.unique(np.concatenate((keepvars,['epoch','SYSTEM'])))
-
     # grab all files matching the patterns
     filelist = get_filelist(filepattern)
     
@@ -106,10 +103,13 @@ def preprocess(filepattern,
             x = read_obsFile(filename)
             print(f"Processing {len(x.observation):n} individual observations")
 
-            # only keep required vars and drop potential empty rows
+            # only keep required vars
             if keepvars is not None:
-                x.observation = x.observation[keepvars].dropna(how='all')
-                x.observation_types = keepvars
+                # only keep rows for which required vars are not NA
+                x.observation = x.observation.dropna(how='all',subset=keepvars)
+                # subselect only the required vars, + always keep 'epoch' and 'SYSTEM'
+                x.observation_types = np.unique(np.concatenate((keepvars,['epoch','SYSTEM'])))
+                x.observation = x.observation[x.observation_types]
                 
             # resample if required
             if interval is not None:
@@ -149,7 +149,7 @@ def preprocess(filepattern,
                 ds.attrs['filename'] = x.filename
                 ds.attrs['observation_types'] = x.observation_types
                 ds.attrs['epoch'] = x.epoch.isoformat()
-                ds.attrs['approx_postion'] = x.approx_position
+                ds.attrs['approx_position'] = x.approx_position
                 ds.to_netcdf(out_path)
                 print(f"Saved {len(x.observation):n} individual observations in {out_name}")
                 
