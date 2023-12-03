@@ -24,7 +24,7 @@ SOFTWARE.
 from gnssvod.io.readFile import (read_navFile, read_obsFile, read_sp3File,
                                 read_clockFile, read_ionFile)
 from gnssvod.io.manipulate import (rinex_merge)
-from gnssvod.io.preprocess import (preprocess,get_filelist,pair_obs)
+from gnssvod.io.preprocess import (preprocess,get_filelist,pair_obs,calc_vod)
 from gnssvod.position.atmosphere import (tropospheric_delay)
 from gnssvod.position.interpolation import (sp3_interp, ionosphere_interp)
 from gnssvod.position.position import (spp, multipath)
