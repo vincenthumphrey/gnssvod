@@ -73,9 +73,6 @@ def preprocess(filepattern,
     For example output={'station1':[gnssvod.io.io.Observation,gnssvod.io.io.Observation,...]}
     
     """
-    if keepvars is not None:
-        keepvars = np.unique(np.concatenate((keepvars,['epoch','SYSTEM'])))
-
     # grab all files matching the patterns
     filelist = get_filelist(filepattern)
     
@@ -106,10 +103,13 @@ def preprocess(filepattern,
             x = read_obsFile(filename)
             print(f"Processing {len(x.observation):n} individual observations")
 
-            # only keep required vars and drop potential empty rows
+            # only keep required vars
             if keepvars is not None:
-                x.observation = x.observation[keepvars].dropna(how='all')
-                x.observation_types = keepvars
+                # only keep rows for which required vars are not NA
+                x.observation = x.observation.dropna(how='all',subset=keepvars)
+                # subselect only the required vars, + always keep 'epoch' and 'SYSTEM'
+                x.observation_types = np.unique(np.concatenate((keepvars,['epoch','SYSTEM'])))
+                x.observation = x.observation[x.observation_types]
                 
             # resample if required
             if interval is not None:
@@ -149,7 +149,7 @@ def preprocess(filepattern,
                 ds.attrs['filename'] = x.filename
                 ds.attrs['observation_types'] = x.observation_types
                 ds.attrs['epoch'] = x.epoch.isoformat()
-                ds.attrs['approx_postion'] = x.approx_position
+                ds.attrs['approx_position'] = x.approx_position
                 ds.to_netcdf(out_path)
                 print(f"Saved {len(x.observation):n} individual observations in {out_name}")
                 
@@ -264,7 +264,7 @@ def pair_obs(filepattern,pairings,timeintervals,keepvars=None,outputdir=None):
         grn_files = get_filelist({grn_name:filepattern[grn_name]})
         # get Epochs from all files
         ref_epochs = [xr.open_mfdataset(x).Epoch for x in ref_files[ref_name]]
-        grn_epochs = [xr.open_mfdataset(x).Epoch for x in ref_files[ref_name]]
+        grn_epochs = [xr.open_mfdataset(x).Epoch for x in grn_files[grn_name]]
         # check which files have data that overlaps with the desired time intervals
         ref_isin = [overall_interval.overlaps(pd.Interval(left=pd.Timestamp(x.values.min()),
                                                           right=pd.Timestamp(x.values.max()))) for x in ref_epochs]
@@ -273,9 +273,11 @@ def pair_obs(filepattern,pairings,timeintervals,keepvars=None,outputdir=None):
         print(f'Found {sum(ref_isin)} files for {ref_name} and {sum(grn_isin)} for {grn_name}')
         print(f'Reading')
         # open those files and convert them to pandas dataframes
-        ref_data = [xr.open_mfdataset(x).to_dataframe() for x in np.array(ref_files[ref_name])[ref_isin]]
-        grn_data = [xr.open_mfdataset(x).to_dataframe() for x in np.array(grn_files[grn_name])[grn_isin]]
-        # concatenate, drop duplicates and sort the dataframe
+        ref_data = [xr.open_mfdataset(x).to_dataframe().dropna(how='all',subset=['epoch']) \
+                    for x in np.array(ref_files[ref_name])[ref_isin]]
+        grn_data = [xr.open_mfdataset(x).to_dataframe().dropna(how='all',subset=['epoch']) \
+                    for x in np.array(grn_files[grn_name])[grn_isin]]
+        # concatenate, drop duplicates and sort the dataframes
         ref_data = pd.concat(ref_data)
         ref_data = ref_data[~ref_data.index.duplicated()].sort_index(level=['Epoch','SV'])
         grn_data = pd.concat(grn_data)
@@ -304,9 +306,62 @@ def pair_obs(filepattern,pairings,timeintervals,keepvars=None,outputdir=None):
                 # make timestamp for filename in format yyyymmddhhmmss_yyyymmddhhmmss
                 ts = f"{df[0].left.strftime('%Y%m%d%H%M%S')}_{df[0].right.strftime('%Y%m%d%H%M%S')}"
                 filename = f"{case_name}_{ts}.nc"
-                # convert dataframe to xarray for saving to netcdf
-                ds = df[1].to_xarray()
-                ds.to_netcdf(os.path.join(ioutputdir,filename))
-            print(f"Saved {len(list_of_dfs)} files in {ioutputdir}")
+                # convert dataframe to xarray for saving to netcdf (if df is not empty)
+                if len(df[1])>0:
+                    ds = df[1].to_xarray()
+                    ds.to_netcdf(os.path.join(ioutputdir,filename))
+                    print(f"Saved {len(df[1])} obs in {filename}")
+                else:
+                    print(f"No data for timestep {ts}, no file saved")
+    return out
+
+#--------------------------------------------------------------------------
+#----------------- CALCULATING VOD -------------------
+#-------------------------------------------------------------------------- 
+
+def calc_vod(filepattern,pairings):
+    """
+    Combines a list of NetCDF files containing paired GNSS receiver data, calculates VOD and returns that data.
+
+    The paired GNSS receiver data is typically generated with the function 'pair_obs'.
     
+    VOD is calculated based on custom pairing rules indicating the input variables that need to be used.
+    
+    Parameters
+    ----------
+    filepattern: dictionary 
+        Dictionary of case names and UNIX-style patterns to find the processed NetCDF files.
+        For example filepattern={'case1':'/path/to/files/of/case1/*.nc',
+                                 'case2':'/path/to/files/of/case2/*.nc'}
+    
+    pairings: dictionary 
+        Dictionary of names associated to a tuple of three variables names indicating what variables to use to calculate VOD, with the reference station given first, the subcanopy station second, and the elevation third.
+        For example pairings={'VOD1':('S1C_ref','S1C_grn','Elevation_grn'),
+                              'VOD2':('S2C_ref','S2C_grn','Elevation_grn')}
+        
+    Returns
+    -------
+    Dictionary of case names associated with dataframes containing the output for each case
+    
+    """
+    out=dict()
+    for item in filepattern.items():
+        case_name = item[0]
+        print(f'Processing {case_name}')
+        files = get_filelist({case_name:filepattern[case_name]})
+        # read in all data
+        data = [xr.open_mfdataset(x).to_dataframe().dropna(how='all') for x in files[case_name]]
+        # concatenate
+        data = pd.concat(data)
+        # calculate VOD based on pairings
+        for ivod in pairings.items():
+            varname_vod = ivod[0]
+            varname_ref = ivod[1][0]
+            varname_grn = ivod[1][1]
+            varname_ele = ivod[1][2]
+            data[varname_vod] = -np.log(np.power(10,(data[varname_grn]-data[varname_ref])/10)) \
+                                *np.cos(np.deg2rad(90-data[varname_ele]))
+        # store result in dictionary
+        out[case_name]=data
+
     return out
