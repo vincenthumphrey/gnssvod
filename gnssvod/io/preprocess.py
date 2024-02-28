@@ -12,6 +12,7 @@ import datetime
 import numpy as np
 import pandas as pd
 import xarray as xr
+import warnings
 from gnssvod.io.readFile import read_obsFile
 from gnssvod.funcs.checkif import (isfloat, isint, isexist)
 from gnssvod.funcs.date import doy2date
@@ -19,8 +20,6 @@ from gnssvod.position.interpolation import sp3_interp_fast
 from gnssvod.position.position import gnssDataframe
 from gnssvod.funcs.constants import _system_name
 import pdb
-# ===========================================================
-
 #-------------------------------------------------------------------------
 #----------------- FILE SELECTION AND BATCH PROCESSING -------------------
 #-------------------------------------------------------------------------
@@ -105,11 +104,9 @@ def preprocess(filepattern,
 
             # only keep required vars
             if keepvars is not None:
-                # only keep rows for which required vars are not NA
-                x.observation = x.observation.dropna(how='all',subset=keepvars)
-                # subselect only the required vars, + always keep 'epoch' and 'SYSTEM'
-                x.observation_types = np.unique(np.concatenate((keepvars,['epoch','SYSTEM'])))
-                x.observation = x.observation[x.observation_types]
+                x.observation = subset_vars(x.observation,keepvars)
+                # update the observation_types list
+                x.observation_types = x.observation.columns.to_list()
                 
             # resample if required
             if interval is not None:
@@ -132,7 +129,7 @@ def preprocess(filepattern,
             
             # store result in memory
             if outputresult:
-                result[i]=x
+                result.append(x)
                 
             # write to file if required
             if outputdir is not None:
@@ -162,6 +159,23 @@ def preprocess(filepattern,
     else:
         return
 
+def subset_vars(df,keepvars,force_epoch_system=True):
+    # subselect those of the required columns that are present 
+    tokeep = np.intersect1d(keepvars,df.columns.tolist())
+    # + always keep 'epoch' and 'SYSTEM' as they are required for calculating azimuth and elevation
+    if force_epoch_system:
+        tokeep = np.unique(keepvars+['epoch','SYSTEM'])
+    else:
+        tokeep = np.unique(keepvars)
+    # find columns not to keep
+    todrop = np.setdiff1d(df.columns.tolist(),tokeep)
+    # drop unneeded columns
+    if len(todrop)>0:
+        df = df.drop(columns=todrop)
+    # drop rows for which all of the required vars are NA
+    df = df.dropna(how='all')
+    return df
+
 def resample_obs(obs,interval):
     obs.observation = obs.observation.groupby([pd.Grouper(freq=interval, level='Epoch'),pd.Grouper(level='SV')]).mean()
     obs.observation['epoch'] = obs.observation.index.get_level_values('Epoch')
@@ -170,9 +184,12 @@ def resample_obs(obs,interval):
     return obs
 
 def add_azi_ele(obs, orbit_data=None):
+    start_time = min(obs.observation.index.get_level_values('Epoch'))
+    end_time = max(obs.observation.index.get_level_values('Epoch'))
+    
     if orbit_data is None:
         do = True
-    elif (orbit_data.my_epoch==obs.epoch) and (orbit_data.my_interval==obs.interval):
+    elif (orbit_data.start_time<start_time) and (orbit_data.end_time>end_time) and (orbit_data.interval==obs.interval):
         # if the orbit for the day corresponding to the epoch and interval is the same as the one that was passed, just reuse it. This drastically reduces the number of times orbit files have to be read and interpolated.
         do = False
     else:
@@ -180,11 +197,12 @@ def add_azi_ele(obs, orbit_data=None):
     
     if do:
         # read (=usually download) orbit data
-        orbit = sp3_interp_fast(obs.epoch, interval=obs.interval)
+        orbit = sp3_interp_fast(start_time, end_time, interval=obs.interval)
         # prepare an orbit object as well
         orbit_data = orbit
-        orbit_data.my_epoch = obs.epoch
-        orbit_data.my_interval = obs.interval
+        orbit_data.start_time = orbit.index.get_level_values('Epoch').min()
+        orbit_data.end_time = orbit.index.get_level_values('Epoch').max()
+        orbit_data.interval = obs.interval
     else:
         orbit = orbit_data
     
@@ -203,7 +221,7 @@ def get_filelist(filepatterns):
         search_pattern = item[1]
         flist = glob.glob(search_pattern)
         if len(flist)==0:
-            raise Warning(f"Could not find any files matching the pattern {search_pattern}")
+            warnings.warn(f"Could not find any files matching the pattern {search_pattern}")
         filelists[station_name] = flist
     return filelists
 
@@ -287,7 +305,7 @@ def pair_obs(filepattern,pairings,timeintervals,keepvars=None,outputdir=None):
         iout = ref_data.join(grn_data,how='inner',lsuffix='_ref',rsuffix='_grn')
         # only keep required vars and drop potential empty rows
         if keepvars is not None:
-            iout = iout[keepvars].dropna(how='all')
+            iout = subset_vars(iout,keepvars,force_epoch_system=False)
         # split the dataframe into multiple dataframes according to timeintervals
         out[case_name] = [x for x in iout.groupby(pd.cut(iout.index.get_level_values('Epoch').tolist(), timeintervals))]
         
