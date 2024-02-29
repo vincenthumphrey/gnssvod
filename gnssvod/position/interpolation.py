@@ -15,9 +15,9 @@ from gnssvod.position.position import _observation_picker_by_band
 __all__ = ["sp3_interp", "ionosphere_interp"]
 
 def sp3_interp_fast(start_time, end_time, interval=30, poly_degree=16, sp3_product="gfz", clock_product="gfz"):
-    # add a large buffer around start and end time
-    start_time_withbuff = start_time-_dt.timedelta(hours=23)
-    end_time_withbuff = end_time+_dt.timedelta(hours=23)
+    # add a buffer around start and end time
+    start_time_withbuff = start_time-_dt.timedelta(hours=2.1)
+    end_time_withbuff = end_time+_dt.timedelta(hours=2.1)
     # determine all required orbit and clock files
     start_epoch = _dt.date(start_time_withbuff.year,start_time_withbuff.month,start_time_withbuff.day)
     end_epoch = _dt.date(end_time_withbuff.year,end_time_withbuff.month,end_time_withbuff.day)
