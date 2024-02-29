@@ -207,7 +207,7 @@ def add_azi_ele(obs, orbit_data=None):
         orbit = orbit_data
     
     # calculate the gnss parameters (including azimuth and elevation)
-    gnssdf = gnssDataframe(obs,orbit)
+    gnssdf = gnssDataframe(obs,orbit,cut_off=-10)
     # add the gnss parameters to the observation dataframe
     obs.observation = obs.observation.join(gnssdf[['Azimuth','Elevation']])
     return obs, orbit_data
@@ -232,18 +232,18 @@ def get_filelist(filepatterns):
 
 def pair_obs(filepattern,pairings,timeintervals,keepvars=None,outputdir=None):
     """
-    Merges and pairs observations from sites according to specified pairing rules over the desired time intervals
+    Merges observations from sites according to specified pairing rules over the desired time intervals.
+    The new dataframe will contain a new index level corresponding to each site, with keys corresponding to station names.
     
     Parameters
     ----------
     filepattern: dictionary 
-        Dictionary of station names and UNIX-style patterns to find the preprocessed NetCDF files 
+        Dictionary of any number station names and UNIX-style patterns to find the preprocessed NetCDF files 
         observation files. For example filepattern={'station1':'/path/to/files/of/station1/*.nc',
                                                     'station2':'/path/to/files/of/station2/*.nc'}
     
     pairings: dictionary 
-        Dictionary of case names associated to a tuple of station names indicating which stations to pair, 
-        with the reference station given first.
+        Dictionary of case names associated to a tuple of station names indicating which stations to pair
         For example pairings={'case1':('station1','station2')} will take 'station1' as the reference station.
         If data is to be saved, the case name will be taken as filename.
         
@@ -254,7 +254,7 @@ def pair_obs(filepattern,pairings,timeintervals,keepvars=None,outputdir=None):
         
     keepvars: list of strings or None (optional)
         Defines what columns are kept after pairing is made. This helps reduce the size of the saved paired data.
-        For example keepvars = ['S1_ref','S1_grn','S2_ref','S2_grn','Azimuth_grn','Elevation_grn']
+        For example keepvars = ['S1','S2','Azimuth','Elevation']
         If None, no columns are removed
         
     outputdir: dictionary (optional)
@@ -265,44 +265,40 @@ def pair_obs(filepattern,pairings,timeintervals,keepvars=None,outputdir=None):
         
     Returns
     -------
-    Dictionary of case names associated with a list of xarray Dataset(s) containing the paired
+    Dictionary of case names associated with a list of pandas dataframes containing the merged
     data for each time interval contained in the 'timeperiod' argument.
     
     """
     out=dict()
     for item in pairings.items():
         case_name = item[0]
+        station_names = item[1]
         print(f'Processing {case_name}')
-        print(f'Listing the files matching with the interval')
-        ref_name = item[1][0]
-        grn_name = item[1][1]
+        # define time interval over which we will need data
         overall_interval = pd.Interval(left=timeintervals.min().left,right=timeintervals.max().right)
-        # get all files
-        ref_files = get_filelist({ref_name:filepattern[ref_name]})
-        grn_files = get_filelist({grn_name:filepattern[grn_name]})
-        # get Epochs from all files
-        ref_epochs = [xr.open_mfdataset(x).Epoch for x in ref_files[ref_name]]
-        grn_epochs = [xr.open_mfdataset(x).Epoch for x in grn_files[grn_name]]
-        # check which files have data that overlaps with the desired time intervals
-        ref_isin = [overall_interval.overlaps(pd.Interval(left=pd.Timestamp(x.values.min()),
-                                                          right=pd.Timestamp(x.values.max()))) for x in ref_epochs]
-        grn_isin = [overall_interval.overlaps(pd.Interval(left=pd.Timestamp(x.values.min()),
-                                                          right=pd.Timestamp(x.values.max()))) for x in grn_epochs]
-        print(f'Found {sum(ref_isin)} files for {ref_name} and {sum(grn_isin)} for {grn_name}')
-        print(f'Reading')
-        # open those files and convert them to pandas dataframes
-        ref_data = [xr.open_mfdataset(x).to_dataframe().dropna(how='all',subset=['epoch']) \
-                    for x in np.array(ref_files[ref_name])[ref_isin]]
-        grn_data = [xr.open_mfdataset(x).to_dataframe().dropna(how='all',subset=['epoch']) \
-                    for x in np.array(grn_files[grn_name])[grn_isin]]
-        # concatenate, drop duplicates and sort the dataframes
-        ref_data = pd.concat(ref_data)
-        ref_data = ref_data[~ref_data.index.duplicated()].sort_index(level=['Epoch','SV'])
-        grn_data = pd.concat(grn_data)
-        grn_data = grn_data[~grn_data.index.duplicated()].sort_index(level=['Epoch','SV'])
-        # inner join the two stations
-        print(f'Pairing')
-        iout = ref_data.join(grn_data,how='inner',lsuffix='_ref',rsuffix='_grn')
+        print(f'Listing the files matching with the interval')
+        # get all files for all stations
+        filenames = get_filelist(filepattern)
+        iout = []
+        for station_name in station_names:
+            # get Epochs from all files
+            epochs = [xr.open_mfdataset(x).Epoch for x in filenames[station_name]]
+            # check which files have data that overlaps with the desired time intervals
+            isin = [overall_interval.overlaps(pd.Interval(left=pd.Timestamp(x.values.min()),
+                                                          right=pd.Timestamp(x.values.max()))) for x in epochs]
+            print(f'Found {sum(isin)} files for {station_name}')
+            print(f'Reading')
+            # open those files and convert them to pandas dataframes
+            idata = [xr.open_mfdataset(x).to_dataframe().dropna(how='all',subset=['epoch']) \
+                    for x in np.array(filenames[station_name])[isin]]
+            # concatenate, drop duplicates and sort the dataframes
+            idata = pd.concat(idata)
+            idata = idata[~idata.index.duplicated()].sort_index(level=['Epoch','SV'])
+            # add the station data in the iout list
+            iout.append(idata)
+        
+        print(f'Concatenating')
+        iout = pd.concat(iout, keys=station_names, names=['Station'])
         # only keep required vars and drop potential empty rows
         if keepvars is not None:
             iout = subset_vars(iout,keepvars,force_epoch_system=False)
