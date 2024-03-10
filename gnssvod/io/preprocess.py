@@ -1,7 +1,7 @@
 """
 preprocess reads files and returns analysis-ready DataSet
 
-pair_obs merges and pairs observations from sites according to specified pairing rules over the desired time intervals
+gather_stations merges observations from sites according to specified pairing rules over the desired time intervals
 """
 # ===========================================================
 # ========================= imports =========================
@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import warnings
+import fnmatch
 from gnssvod.io.readFile import read_obsFile
 from gnssvod.funcs.checkif import (isfloat, isint, isexist)
 from gnssvod.funcs.date import doy2date
@@ -29,6 +30,7 @@ def preprocess(filepattern,
                keepvars=None,
                outputdir=None,
                overwrite=False,
+               compress=True,
                outputresult=False):
     """
     Returns lists of Observation objects containing GNSS observations read from RINEX observation files
@@ -58,6 +60,10 @@ def preprocess(filepattern,
         Dictionary keys must be the same as in the filepattern argument
         Data will be saved as a netcdf file, recycling the original file name
         If this argument is None, data won't be saved
+
+    compress: bool (optional)
+        If True, will save all SNR, Azimuth, and Elevation data as int16 with a scale factor to restore the first decimal
+        Encoding for these variables will be {"dtype": "int16", "scale_factor": 0.1, "zlib": True, "_FillValue":-9999}
 
     overwrite: bool (optional)
         If False (default), RINEX files with an existing matching files in the 
@@ -147,7 +153,16 @@ def preprocess(filepattern,
                 ds.attrs['observation_types'] = x.observation_types
                 ds.attrs['epoch'] = x.epoch.isoformat()
                 ds.attrs['approx_position'] = x.approx_position
-                ds.to_netcdf(out_path)
+                if compress:
+                    enc = {"dtype": "int16", "scale_factor": 0.1, "zlib": True, "_FillValue":-9999}
+                    to_compress = [fnmatch.fnmatch(x,'S??') | 
+                                   fnmatch.fnmatch(x,'S?') | 
+                                   fnmatch.fnmatch(x,'Azimuth') | 
+                                   fnmatch.fnmatch(x,'Elevation') for x in list(ds.keys())]
+                    encodings = {x:enc for x in np.array(list(ds.keys()))[to_compress]}
+                    ds.to_netcdf(out_path,encoding=encodings)
+                else:
+                    ds.to_netcdf(out_path)
                 print(f"Saved {len(x.observation):n} individual observations in {out_name}")
                 
         # store station in memory if required
@@ -160,11 +175,13 @@ def preprocess(filepattern,
         return
 
 def subset_vars(df,keepvars,force_epoch_system=True):
+    # find all matches for all elements of keepvars
+    keepvars = np.concatenate([fnmatch.filter(df.columns.tolist(),x) for x in keepvars])
     # subselect those of the required columns that are present 
     tokeep = np.intersect1d(keepvars,df.columns.tolist())
     # + always keep 'epoch' and 'SYSTEM' as they are required for calculating azimuth and elevation
     if force_epoch_system:
-        tokeep = np.unique(keepvars+['epoch','SYSTEM'])
+        tokeep = np.unique(np.concatenate((keepvars,['epoch','SYSTEM'])))
     else:
         tokeep = np.unique(keepvars)
     # find columns not to keep
@@ -210,6 +227,10 @@ def add_azi_ele(obs, orbit_data=None):
     gnssdf = gnssDataframe(obs,orbit,cut_off=-10)
     # add the gnss parameters to the observation dataframe
     obs.observation = obs.observation.join(gnssdf[['Azimuth','Elevation']])
+    # drop variables 'epoch' and 'SYSTEM' as they are not needed anymore by gnssDataframe
+    obs.observation = obs.observation.drop(columns=['epoch','SYSTEM'])
+    # update the observation_types list
+    obs.observation_types = obs.observation.columns.to_list()
     return obs, orbit_data
 
 def get_filelist(filepatterns):
@@ -232,7 +253,7 @@ def get_filelist(filepatterns):
 
 def gather_stations(filepattern,pairings,timeintervals,keepvars=None,outputdir=None):
     """
-    Merges observations from sites according to specified pairing rules over the desired time intervals.
+    Merges observations from different sites according to specified pairing rules over the desired time intervals.
     The new dataframe will contain a new index level corresponding to each site, with keys corresponding to station names.
     
     Parameters
@@ -243,23 +264,23 @@ def gather_stations(filepattern,pairings,timeintervals,keepvars=None,outputdir=N
                                                     'station2':'/path/to/files/of/station2/*.nc'}
     
     pairings: dictionary 
-        Dictionary of case names associated to a tuple of station names indicating which stations to pair
-        For example pairings={'case1':('station1','station2')} will take 'station1' as the reference station.
+        Dictionary of case names associated to a tuple of station names indicating which stations to gather
+        For example pairings={'case1':('station1','station2')}
         If data is to be saved, the case name will be taken as filename.
         
     timeintervals: pandas fixed frequency IntervalIndex
-        The time interval(s) over which to pair data
-        For example timeperiod=pd.interval_range(start=pd.Timestamp('1/1/2018'), periods=8, freq='D') will pair 
+        The time interval(s) over which to gather data
+        For example timeperiod=pd.interval_range(start=pd.Timestamp('1/1/2018'), periods=8, freq='D') will gather 
         data for each of the 8 days in timeperiod and return one DataSet for each day.
         
     keepvars: list of strings or None (optional)
-        Defines what columns are kept after pairing is made. This helps reduce the size of the saved paired data.
+        Defines what columns are kept after gathering is made. This helps reduce the size of the data when saved.
         For example keepvars = ['S1','S2','Azimuth','Elevation']
         If None, no columns are removed
         
     outputdir: dictionary (optional)
-        A dictionary of station names and folders indicating where to save the preprocessed data
-        For example outputdir={'case1':'/path/where/to/save/paired/data'}
+        A dictionary of station names and folders indicating where to save the gathered data
+        For example outputdir={'case1':'/path/where/to/save/data'}
         Data will be saved as a netcdf file, the dictionary has to be consistent with the 'pairings' argument
         If this argument is None, data will not be saved
         
@@ -323,7 +344,8 @@ def gather_stations(filepattern,pairings,timeintervals,keepvars=None,outputdir=N
                 # convert dataframe to xarray for saving to netcdf (if df is not empty)
                 if len(df[1])>0:
                     ds = df[1].to_xarray()
-                    ds.to_netcdf(os.path.join(ioutputdir,filename))
+                    # sort SV dimension
+                    ds.sortby(['Epoch','SV','Station']).to_netcdf(os.path.join(ioutputdir,filename))
                     print(f"Saved {len(df[1])} obs in {filename}")
                 else:
                     print(f"No data for timestep {ts}, no file saved")
