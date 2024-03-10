@@ -34,7 +34,8 @@ from gnssvod.funcs.funcs import (gpsweekday, gpswdtodate, jday, julianday2date,
                                 doy, doy2date, datetime2doy)
 from gnssvod.download import (get_rinex, get_rinex3, get_navigation, 
                              get_sp3, get_clock, get_ionosphere)
+from gnssvod.analysis.vod_calc import (calc_vod)
 from gnssvod import plot
 
-__version__ = '2023.11.01'
+__version__ = '2024.03.10'
 __author__ = 'Vincent Humphrey (gnssvod), Mustafa Serkan Isik & Volkan Ozbey (gnsspy)'
