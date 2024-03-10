@@ -230,7 +230,7 @@ def get_filelist(filepatterns):
 #----------------- PAIRING OBSERVATION FILES FROM SITES -------------------
 #-------------------------------------------------------------------------- 
 
-def pair_obs(filepattern,pairings,timeintervals,keepvars=None,outputdir=None):
+def gather_stations(filepattern,pairings,timeintervals,keepvars=None,outputdir=None):
     """
     Merges observations from sites according to specified pairing rules over the desired time intervals.
     The new dataframe will contain a new index level corresponding to each site, with keys corresponding to station names.
@@ -327,55 +327,4 @@ def pair_obs(filepattern,pairings,timeintervals,keepvars=None,outputdir=None):
                     print(f"Saved {len(df[1])} obs in {filename}")
                 else:
                     print(f"No data for timestep {ts}, no file saved")
-    return out
-
-#--------------------------------------------------------------------------
-#----------------- CALCULATING VOD -------------------
-#-------------------------------------------------------------------------- 
-
-def calc_vod(filepattern,pairings):
-    """
-    Combines a list of NetCDF files containing paired GNSS receiver data, calculates VOD and returns that data.
-
-    The paired GNSS receiver data is typically generated with the function 'pair_obs'.
-    
-    VOD is calculated based on custom pairing rules indicating the input variables that need to be used.
-    
-    Parameters
-    ----------
-    filepattern: dictionary 
-        Dictionary of case names and UNIX-style patterns to find the processed NetCDF files.
-        For example filepattern={'case1':'/path/to/files/of/case1/*.nc',
-                                 'case2':'/path/to/files/of/case2/*.nc'}
-    
-    pairings: dictionary 
-        Dictionary of names associated to a tuple of three variables names indicating what variables to use to calculate VOD, with the reference station given first, the subcanopy station second, and the elevation third.
-        For example pairings={'VOD1':('S1C_ref','S1C_grn','Elevation_grn'),
-                              'VOD2':('S2C_ref','S2C_grn','Elevation_grn')}
-        
-    Returns
-    -------
-    Dictionary of case names associated with dataframes containing the output for each case
-    
-    """
-    out=dict()
-    for item in filepattern.items():
-        case_name = item[0]
-        print(f'Processing {case_name}')
-        files = get_filelist({case_name:filepattern[case_name]})
-        # read in all data
-        data = [xr.open_mfdataset(x).to_dataframe().dropna(how='all') for x in files[case_name]]
-        # concatenate
-        data = pd.concat(data)
-        # calculate VOD based on pairings
-        for ivod in pairings.items():
-            varname_vod = ivod[0]
-            varname_ref = ivod[1][0]
-            varname_grn = ivod[1][1]
-            varname_ele = ivod[1][2]
-            data[varname_vod] = -np.log(np.power(10,(data[varname_grn]-data[varname_ref])/10)) \
-                                *np.cos(np.deg2rad(90-data[varname_ele]))
-        # store result in dictionary
-        out[case_name]=data
-
     return out
