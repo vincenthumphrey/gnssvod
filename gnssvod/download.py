@@ -288,7 +288,7 @@ def get_sp3(sp3file, directory=os.getcwd()):
     sp3FileDir = 'products'
     if int(gpsWeek)<2038:
         intermediateDir = ''
-    elif int(gpsWeek)<2238:
+    elif int(gpsWeek)<2247: 
         intermediateDir = 'mgex'
     else:
         intermediateDir = ''
@@ -343,7 +343,7 @@ def get_clock(clockFile, directory=os.getcwd()):
     clockFileDir = 'products'
     if int(gpsWeek)<2038:
         intermediateDir = ''
-    elif int(gpsWeek)<2238:
+    elif int(gpsWeek)<2247:
         intermediateDir = 'mgex'
     else:
         intermediateDir = ''

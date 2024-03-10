@@ -4,6 +4,7 @@ import time
 import pandas as _pd
 import numpy as _np
 import pdb
+import datetime as _dt
 from datetime import datetime, timedelta
 from gnssvod.io import readFile
 from gnssvod.geodesy.coordinate import cart2ell, geocentric_latitude
@@ -13,32 +14,27 @@ from gnssvod.position.position import _observation_picker_by_band
 
 __all__ = ["sp3_interp", "ionosphere_interp"]
 
-def sp3_interp_fast(epoch, interval=30, poly_degree=16, sp3_product="gfz", clock_product="gfz"):
+def sp3_interp_fast(start_time, end_time, interval=30, poly_degree=16, sp3_product="gfz", clock_product="gfz"):
+    # add a buffer around start and end time
+    start_time_withbuff = start_time-_dt.timedelta(hours=2.1)
+    end_time_withbuff = end_time+_dt.timedelta(hours=2.1)
     # determine all required orbit and clock files
-    epoch_yesterday = epoch - timedelta(days=1)
-    epoch_tomorrow =  epoch + timedelta(days=1)
-    yesterday = sp3FileName(epoch_yesterday, sp3_product)
-    today = sp3FileName(epoch, sp3_product)
-    tomorrow = sp3FileName(epoch_tomorrow, sp3_product)
-    clockFile = clockFileName(epoch, interval, clock_product)
+    start_epoch = _dt.date(start_time_withbuff.year,start_time_withbuff.month,start_time_withbuff.day)
+    end_epoch = _dt.date(end_time_withbuff.year,end_time_withbuff.month,end_time_withbuff.day)
+    epochs = _pd.date_range(start_epoch,end_epoch,freq='d')
+    sp3FileNames = [sp3FileName(x.date(),sp3_product) for x in epochs]
+    clockFileNames = [clockFileName(x.date(),interval,clock_product) for x in epochs]
     #--------------------------------------------------------------------------
     # reading all those files, downloading them if necessary
-    yes   = readFile.read_sp3File(yesterday) 
-    tod = readFile.read_sp3File(today) 
-    tom   = readFile.read_sp3File(tomorrow) 
-    clock = readFile.read_clockFile(clockFile)
+    sp3 = [readFile.read_sp3File(x) for x in sp3FileNames]
+    clock = [readFile.read_clockFile(x) for x in clockFileNames]
     #--------------------------------------------------------------------------
     # concatenate data from current day and some buffer before and after
     start = time.time()
-    yes = yes.dropna(subset=["deltaT"])
-    tod = tod.dropna(subset=["deltaT"])
-    tom = tom.dropna(subset=["deltaT"])
-    yes = yes.reorder_levels(["Epoch","SV"])
-    tod = tod.reorder_levels(["Epoch","SV"])
-    tom = tom.reorder_levels(["Epoch","SV"])
-    yes = yes.loc[(slice(_pd.Timestamp(datetime(epoch_yesterday.year, epoch_yesterday.month, epoch_yesterday.day,23,0,0)),_pd.Timestamp(datetime(epoch_yesterday.year, epoch_yesterday.month, epoch_yesterday.day,23,59,59))))]
-    tom = tom.loc[(slice(_pd.Timestamp(datetime(epoch_tomorrow.year, epoch_tomorrow.month, epoch_tomorrow.day,0,0,0)),_pd.Timestamp(datetime(epoch_tomorrow.year, epoch_tomorrow.month, epoch_tomorrow.day,3,0,0))))]
-    sp3 = _pd.concat([yes,tod,tom], axis=0)
+    sp3 = _pd.concat(sp3,axis=0)
+    clock = _pd.concat(clock,axis=0)
+    sp3 = sp3.dropna(subset=["deltaT"]).reorder_levels(["Epoch","SV"])
+    sp3 = sp3.loc[(slice(start_time_withbuff,end_time_withbuff))]
     #--------------------------------------------------------------------------
     svList = sp3.index.get_level_values("SV").unique()
     svList = svList.sort_values()
@@ -47,12 +43,15 @@ def sp3_interp_fast(epoch, interval=30, poly_degree=16, sp3_product="gfz", clock
     sp3_resampled = []
     for sv in svList:
         sp3_temp = sp3.xs(sv,level='SV')[['X','Y','Z']] * 1000 # km to m
-        sp3_temp_resampled = sp3_temp.resample(f"{interval}S")
-        sp3_temp_resampled = sp3_temp_resampled.interpolate(method='cubic')
-        sp3_temp_resampled['Vx']=-sp3_temp_resampled['X'].diff(periods=-1)/interval
-        sp3_temp_resampled['Vy']=-sp3_temp_resampled['Y'].diff(periods=-1)/interval
-        sp3_temp_resampled['Vz']=-sp3_temp_resampled['Z'].diff(periods=-1)/interval
-        sp3_resampled.append(sp3_temp_resampled)
+        # only process if a minimum of 4 orbit data points are present
+        if len(sp3_temp)>3:
+            sp3_temp_resampled = sp3_temp.resample(f"{interval}S")
+            sp3_temp_resampled = sp3_temp_resampled.interpolate(method='cubic')
+            # recalculate V taking into account sampling rate
+            sp3_temp_resampled['Vx']=-sp3_temp_resampled['X'].diff(periods=-1)/interval
+            sp3_temp_resampled['Vy']=-sp3_temp_resampled['Y'].diff(periods=-1)/interval
+            sp3_temp_resampled['Vz']=-sp3_temp_resampled['Z'].diff(periods=-1)/interval
+            sp3_resampled.append(sp3_temp_resampled)
 
     sp3_resampled = _pd.concat(sp3_resampled, keys=svList, names=['SV']).reorder_levels(['Epoch', 'SV']).sort_index(level='Epoch')
     #--------------------------------------------------------------------------
@@ -66,9 +65,11 @@ def sp3_interp_fast(epoch, interval=30, poly_degree=16, sp3_product="gfz", clock
     clock_resampled = []
     for sv in svList_clk:
         clock_temp = clock.xs(sv,level='SV')
-        clock_temp_resampled = clock_temp.resample(f"{interval}S")
-        clock_temp_resampled = clock_temp_resampled.interpolate(method='cubic')
-        clock_resampled.append(clock_temp_resampled)
+        # only process if a minimum of 4 clock data points are present
+        if len(clock_temp)>3:
+            clock_temp_resampled = clock_temp.resample(f"{interval}S")
+            clock_temp_resampled = clock_temp_resampled.interpolate(method='cubic')
+            clock_resampled.append(clock_temp_resampled)
 
     clock_resampled = _pd.concat(clock_resampled, keys=svList_clk, names=['SV']).reorder_levels(['Epoch', 'SV']).sort_index(level='Epoch')
     #--------------------------------------------------------------------------
