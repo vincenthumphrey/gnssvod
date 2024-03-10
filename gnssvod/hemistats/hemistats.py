@@ -83,7 +83,8 @@ class Hemi:
             # cut data with azimuthal edges to retrieve azimuthal index
             idf['aziind'] = pd.cut(idf[aziname], 
                                   bins = np.concatenate((iazilims,[360])),
-                                  labels = False)
+                                  labels = False,
+                                  right = False)
             # return the corresponding CellID values
             idf[idname] = self.CellIDs[iele][idf['aziind'].values]
             return(idf[idname])
