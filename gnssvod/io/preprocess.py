@@ -251,7 +251,7 @@ def get_filelist(filepatterns):
 #----------------- PAIRING OBSERVATION FILES FROM SITES -------------------
 #-------------------------------------------------------------------------- 
 
-def gather_stations(filepattern,pairings,timeintervals,keepvars=None,outputdir=None):
+def gather_stations(filepattern,pairings,timeintervals,keepvars=None,outputdir=None,compress=True):
     """
     Merges observations from different sites according to specified pairing rules over the desired time intervals.
     The new dataframe will contain a new index level corresponding to each site, with keys corresponding to station names.
@@ -283,6 +283,10 @@ def gather_stations(filepattern,pairings,timeintervals,keepvars=None,outputdir=N
         For example outputdir={'case1':'/path/where/to/save/data'}
         Data will be saved as a netcdf file, the dictionary has to be consistent with the 'pairings' argument
         If this argument is None, data will not be saved
+
+    compress: bool (optional)
+        If True, will save all SNR, Azimuth, and Elevation data as int16 with a scale factor to restore the first decimal
+        Encoding for these variables will be {"dtype": "int16", "scale_factor": 0.1, "zlib": True, "_FillValue":-9999}
         
     Returns
     -------
@@ -310,7 +314,7 @@ def gather_stations(filepattern,pairings,timeintervals,keepvars=None,outputdir=N
             print(f'Found {sum(isin)} files for {station_name}')
             print(f'Reading')
             # open those files and convert them to pandas dataframes
-            idata = [xr.open_mfdataset(x).to_dataframe().dropna(how='all',subset=['epoch']) \
+            idata = [xr.open_mfdataset(x).to_dataframe().dropna(how='all') \
                     for x in np.array(filenames[station_name])[isin]]
             # concatenate, drop duplicates and sort the dataframes
             idata = pd.concat(idata)
@@ -344,8 +348,21 @@ def gather_stations(filepattern,pairings,timeintervals,keepvars=None,outputdir=N
                 # convert dataframe to xarray for saving to netcdf (if df is not empty)
                 if len(df[1])>0:
                     ds = df[1].to_xarray()
-                    # sort SV dimension
-                    ds.sortby(['Epoch','SV','Station']).to_netcdf(os.path.join(ioutputdir,filename))
+                    # sort dimensions
+                    ds = ds.sortby(['Epoch','SV','Station'])
+                    out_path = os.path.join(ioutputdir,filename)
+                    if os.path.exists(out_path):
+                        os.remove(out_path)
+                    if compress:
+                        enc = {"dtype": "int16", "scale_factor": 0.1, "zlib": True, "_FillValue":-9999}
+                        to_compress = [fnmatch.fnmatch(x,'S??') | 
+                                       fnmatch.fnmatch(x,'S?') | 
+                                       fnmatch.fnmatch(x,'Azimuth') | 
+                                       fnmatch.fnmatch(x,'Elevation') for x in list(ds.keys())]
+                        encodings = {x:enc for x in np.array(list(ds.keys()))[to_compress]}
+                        ds.to_netcdf(out_path,encoding=encodings)
+                    else:
+                        ds.to_netcdf(out_path)
                     print(f"Saved {len(df[1])} obs in {filename}")
                 else:
                     print(f"No data for timestep {ts}, no file saved")
