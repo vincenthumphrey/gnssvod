@@ -3,6 +3,8 @@ Python Toolkit for deriving Vegetation Optical Depth (VOD) from pairs of GNSS re
 
 ![illustration image](examples/figures/illustration_snr.png)
 
+![illustration image](examples/figures/illustration_vod.png)
+
 ### Installation
 
 Directly install package from GitHub via
