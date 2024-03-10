@@ -43,12 +43,15 @@ def sp3_interp_fast(start_time, end_time, interval=30, poly_degree=16, sp3_produ
     sp3_resampled = []
     for sv in svList:
         sp3_temp = sp3.xs(sv,level='SV')[['X','Y','Z']] * 1000 # km to m
-        sp3_temp_resampled = sp3_temp.resample(f"{interval}S")
-        sp3_temp_resampled = sp3_temp_resampled.interpolate(method='cubic')
-        sp3_temp_resampled['Vx']=-sp3_temp_resampled['X'].diff(periods=-1)/interval
-        sp3_temp_resampled['Vy']=-sp3_temp_resampled['Y'].diff(periods=-1)/interval
-        sp3_temp_resampled['Vz']=-sp3_temp_resampled['Z'].diff(periods=-1)/interval
-        sp3_resampled.append(sp3_temp_resampled)
+        # only process if a minimum of 4 orbit data points are present
+        if len(sp3_temp)>3:
+            sp3_temp_resampled = sp3_temp.resample(f"{interval}S")
+            sp3_temp_resampled = sp3_temp_resampled.interpolate(method='cubic')
+            # recalculate V taking into account sampling rate
+            sp3_temp_resampled['Vx']=-sp3_temp_resampled['X'].diff(periods=-1)/interval
+            sp3_temp_resampled['Vy']=-sp3_temp_resampled['Y'].diff(periods=-1)/interval
+            sp3_temp_resampled['Vz']=-sp3_temp_resampled['Z'].diff(periods=-1)/interval
+            sp3_resampled.append(sp3_temp_resampled)
 
     sp3_resampled = _pd.concat(sp3_resampled, keys=svList, names=['SV']).reorder_levels(['Epoch', 'SV']).sort_index(level='Epoch')
     #--------------------------------------------------------------------------
@@ -62,9 +65,11 @@ def sp3_interp_fast(start_time, end_time, interval=30, poly_degree=16, sp3_produ
     clock_resampled = []
     for sv in svList_clk:
         clock_temp = clock.xs(sv,level='SV')
-        clock_temp_resampled = clock_temp.resample(f"{interval}S")
-        clock_temp_resampled = clock_temp_resampled.interpolate(method='cubic')
-        clock_resampled.append(clock_temp_resampled)
+        # only process if a minimum of 4 clock data points are present
+        if len(clock_temp)>3:
+            clock_temp_resampled = clock_temp.resample(f"{interval}S")
+            clock_temp_resampled = clock_temp_resampled.interpolate(method='cubic')
+            clock_resampled.append(clock_temp_resampled)
 
     clock_resampled = _pd.concat(clock_resampled, keys=svList_clk, names=['SV']).reorder_levels(['Epoch', 'SV']).sort_index(level='Epoch')
     #--------------------------------------------------------------------------
