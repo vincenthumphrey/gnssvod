@@ -194,7 +194,11 @@ def subset_vars(df,keepvars,force_epoch_system=True):
     return df
 
 def resample_obs(obs,interval):
-    obs.observation = obs.observation.groupby([pd.Grouper(freq=interval, level='Epoch'),pd.Grouper(level='SV')]).mean()
+    # list all variables except SYSTEM and epoch as these are recalculated separately
+    subset = np.setdiff1d(obs.observation.columns.to_list(),['epoch','SYSTEM'])
+    # resample using the temporal average
+    obs.observation = obs.observation[subset].groupby([pd.Grouper(freq=interval, level='Epoch'),pd.Grouper(level='SV')]).mean()
+    # restore SYSTEM and epoch
     obs.observation['epoch'] = obs.observation.index.get_level_values('Epoch')
     obs.observation['SYSTEM'] = _system_name(obs.observation.index.get_level_values("SV"))
     obs.interval = pd.Timedelta(interval).seconds
@@ -242,7 +246,7 @@ def get_filelist(filepatterns):
         search_pattern = item[1]
         flist = glob.glob(search_pattern)
         if len(flist)==0:
-            warnings.warn(f"Could not find any files matching the pattern {search_pattern}")
+            print(f"Could not find any files matching the pattern {search_pattern}")
         filelists[station_name] = flist
     return filelists
 
