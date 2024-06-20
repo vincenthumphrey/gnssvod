@@ -19,7 +19,8 @@ setup(
               "gnssvod.funcs",
               "gnssvod.geodesy",
               "gnssvod.doc",
-              "gnssvod.hemistats"],
+              "gnssvod.hemistats",
+              "gnssvod.analysis"],
   install_requires=[
     "pandas",
     "numpy",
