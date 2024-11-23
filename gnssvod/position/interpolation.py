@@ -45,7 +45,7 @@ def sp3_interp_fast(start_time, end_time, interval=30, poly_degree=16, sp3_produ
         sp3_temp = sp3.xs(sv,level='SV')[['X','Y','Z']] * 1000 # km to m
         # only process if a minimum of 4 orbit data points are present
         if len(sp3_temp)>3:
-            sp3_temp_resampled = sp3_temp.resample(f"{interval}S")
+            sp3_temp_resampled = sp3_temp.resample(f"{interval}s")
             sp3_temp_resampled = sp3_temp_resampled.interpolate(method='cubic')
             # recalculate V taking into account sampling rate
             sp3_temp_resampled['Vx']=-sp3_temp_resampled['X'].diff(periods=-1)/interval
