@@ -332,7 +332,7 @@ def gather_stations(filepattern,pairings,timeintervals,keepvars=None,outputdir=N
         if keepvars is not None:
             iout = subset_vars(iout,keepvars,force_epoch_system=False)
         # split the dataframe into multiple dataframes according to timeintervals
-        out[case_name] = [x for x in iout.groupby(pd.cut(iout.index.get_level_values('Epoch').tolist(), timeintervals))]
+        out[case_name] = [x for x in iout.groupby(pd.cut(iout.index.get_level_values('Epoch').tolist(), timeintervals), observed=True)]
         
     # output the files
     if outputdir:
