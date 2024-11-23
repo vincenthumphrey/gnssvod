@@ -67,7 +67,7 @@ def sp3_interp_fast(start_time, end_time, interval=30, poly_degree=16, sp3_produ
         clock_temp = clock.xs(sv,level='SV')
         # only process if a minimum of 4 clock data points are present
         if len(clock_temp)>3:
-            clock_temp_resampled = clock_temp.resample(f"{interval}S")
+            clock_temp_resampled = clock_temp.resample(f"{interval}s")
             clock_temp_resampled = clock_temp_resampled.interpolate(method='cubic')
             clock_resampled.append(clock_temp_resampled)
 
