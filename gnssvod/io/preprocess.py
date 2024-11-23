@@ -194,9 +194,9 @@ def subset_vars(df,keepvars,force_epoch_system=True):
     return df
 
 def resample_obs(obs,interval):
-    # list all variables except SYSTEM and epoch as these are recalculated separately
+    # list all variables except SYSTEM and epoch as these are handled differently
     subset = np.setdiff1d(obs.observation.columns.to_list(),['epoch','SYSTEM'])
-    # resample using the temporal average
+    # resample those variables using temporal averaging
     obs.observation = obs.observation[subset].groupby([pd.Grouper(freq=interval, level='Epoch'),pd.Grouper(level='SV')]).mean()
     # restore SYSTEM and epoch
     obs.observation['epoch'] = obs.observation.index.get_level_values('Epoch')
