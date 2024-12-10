@@ -1,4 +1,3 @@
-from pathlib import Path
 from gnssvod.hemistats.hemistats import hemibuild, Hemi
 from matplotlib.patches import Rectangle
 import numpy as np

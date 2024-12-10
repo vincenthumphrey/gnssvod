@@ -5,21 +5,33 @@ GPS
 # ===========================================================
 # ========================= imports =========================
 import os
+import http.client
 import urllib.request as url
-from pyunpack import Archive
+from pathlib import Path
 import datetime
+from hatanaka import decompress_on_disk
 from dateutil.relativedelta import relativedelta
-from gnssvod.funcs.funcs import (check_internet, obsFileName,
+from gnssvod.funcs.filename import (obsFileName,
                                 navFileName, nav3FileName, 
-                                obs3FileName, datetime2doy,
-                               gpsweekday)
+                                obs3FileName)
+from gnssvod.funcs.date import (datetime2doy,gpsweekday)
 from tqdm import tqdm
-import pdb
 # ===========================================================
 
 __all__ = ["get_rinex", "get_rinex3", "get_navigation", "get_clock", "get_sp3", "get_ionosphere"]
 
 server_root = 'ftp://gssc.esa.int/gnss'
+
+def check_internet():
+    """ To check if there is an internet connection for FTP downloads """
+    connection = http.client.HTTPConnection("www.google.com", timeout=5)
+    try:
+        connection.request("HEAD", "/")
+        connection.close()
+        return True
+    except:
+        connection.close()
+        return False
 
 def get_rinex(stationList, date_start, date_finish=None, period='day', Datetime=False, directory=os.getcwd()):
     """
@@ -256,35 +268,45 @@ def get_rinex3(stationList, date_start, date_finish=None, period='day', Datetime
                 raise Warning("Requested file", fileName, "cannot be not found!")
 
 
-def get_sp3(sp3file, directory=os.getcwd()):
+def get_sp3(sp3_path: str) -> None:
     """
-    This function downloads GFZ orbit file from ftp server and returns the fileName
+    Given the path of a GFZ orbit file, this function will make sure that orbit file
+    is at that location.
+
+    The function will 
+    1) do nothing if the file already exists
+    2) if a zipped version of the file exists, it will unzip it in the same folder
+    3) if no file or zipped file exists, it will download it and unzip it
     """
-    if sp3file[-3:]=='sp3':
-        gpsWeek = sp3file[3:-5]
-        fileName = sp3file + ".Z"
-    elif sp3file[-3:]=='SP3':
-        sp3Date = datetime.datetime.strptime(sp3file.split('_')[1],'%Y%j%H%M').date()
+    sp3path = Path(sp3_path)
+    if sp3path.suffix=='.sp3':
+        gpsWeek = sp3path.name[3:-5]
+        zipped_path = Path(sp3path.parent,sp3path.name + ".Z")
+    elif sp3path.suffix=='.SP3':
+        sp3Date = datetime.datetime.strptime(sp3path.name.split('_')[1],'%Y%j%H%M').date()
         gpsWeek, gpsWeekday = gpsweekday(sp3Date, Datetime = True)
         gpsWeek = str(gpsWeek)
-        fileName = sp3file + ".gz"
+        zipped_path = Path(sp3path.parent,sp3path.name + ".gz")
     else:
         raise Warning("sp3 filename must either end in .sp3 (gpsWeek < 2238) or .SP3 (gpsWeek >= 2238)")
         sys.exit("Exiting...")
     
-    if os.path.exists(fileName) == True:
-        if os.path.exists(sp3file) == True:
-            print(sp3file + " exists in working directory")
-            return
-        else:
-            print(fileName + " exists in working directory | Extracting...")
-            Archive(fileName).extractall(os.getcwd())
-            return
+    # if the file exists, nothing else to do
+    if sp3path.exists():
+        print(f"{sp3path.name} exists in {sp3path.parent}")
+        return
+    # if a zip of the file already exists, unzip it, then leave
+    if zipped_path.exists():
+        print(f"{zipped_path.name} exists in {zipped_path.parent} | Extracting...")
+        decompress_on_disk(zipped_path, delete=True)
+        return
     
+    # if this is reached, we proceed to downloading
     internet = check_internet()
     if internet == False:
         raise Warning('No internet connection! | Cannot download orbit file')
     
+    # define remote path
     sp3FileDir = 'products'
     if int(gpsWeek)<2038:
         intermediateDir = ''
@@ -292,54 +314,63 @@ def get_sp3(sp3file, directory=os.getcwd()):
         intermediateDir = 'mgex'
     else:
         intermediateDir = ''
-    
-    file_topath = os.path.join(directory, fileName)
-    fileDir = [server_root, sp3FileDir, gpsWeek, intermediateDir, fileName]
+    fileDir = [server_root, sp3FileDir, gpsWeek, intermediateDir, zipped_path.name]
     ftp = '/'.join(fileDir) # FTP link of file
     
+    # attempt download
     try:
-        print('Downloading:', fileName, end = '')
-        with TqdmUpTo(unit='B', unit_scale=True, unit_divisor=1024, miniters=1, desc=fileName) as t:
-            url.urlretrieve(ftp, file_topath, reporthook=t.update_to)
-        print(' | Download completed for', fileName)
-        Archive(fileName).extractall(os.getcwd())
+        print('Downloading:', zipped_path.name, end = '')
+        with TqdmUpTo(unit='B', unit_scale=True, unit_divisor=1024, miniters=1, desc=zipped_path.name) as t:
+            url.urlretrieve(ftp, zipped_path, reporthook=t.update_to)
+        print(' | Download completed for', zipped_path.name)
+        decompress_on_disk(zipped_path, delete=True)
     except:
-        print(" | Requested file", fileName, "cannot be not found!")
+        print(" | Requested file", zipped_path.name, "cannot be not found!")
 
-    return fileName
+    return
     
-def get_clock(clockFile, directory=os.getcwd()):
+def get_clock(clock_path):
     """
-    This function downloads GFZ clock file from ftp server and returns the fileName
+    Given the path of a GFZ clock file, this function will make sure that clock file
+    is at that location.
+
+    The function will 
+    1) do nothing if the file already exists
+    2) if a zipped version of the file exists, it will unzip it in the same folder
+    3) if no file or zipped file exists, it will download it and unzip it
     """
-    if clockFile[-3:]=='clk':
-        gpsWeek = clockFile[3:-7]
-        fileName = clockFile + ".Z"
-    elif clockFile[-7:]=='clk_05s':
-        gpsWeek = clockFile[3:-9]
-        fileName = clockFile + ".Z"
-    elif clockFile[-3:]=='CLK':
-        clockDate = datetime.datetime.strptime(clockFile.split('_')[1],'%Y%j%H%M').date()
+    clockpath = Path(clock_path)
+    if clockpath.suffix=='.clk':
+        gpsWeek = clockpath.name[3:-7]
+        zipped_path = Path(clockpath.parent,clockpath.name + ".Z")
+    elif clockpath.suffix=='.clk_05s':
+        gpsWeek = clockpath.name[3:-9]
+        zipped_path = Path(clockpath.parent,clockpath.name + ".Z")
+    elif clockpath.suffix=='.CLK':
+        clockDate = datetime.datetime.strptime(clockpath.name.split('_')[1],'%Y%j%H%M').date()
         gpsWeek, gpsWeekday = gpsweekday(clockDate, Datetime = True)
         gpsWeek = str(gpsWeek)
-        fileName = clockFile + ".gz"
+        zipped_path = Path(clockpath.parent,clockpath.name + ".gz")
     else:
         raise Warning("clock filename must either end in .clk (gpsWeek < 2238) or .CLK (gpsWeek >= 2238)")
         sys.exit("Exiting...")
         
-    if os.path.exists(fileName) == True:
-        if os.path.exists(clockFile) == True:
-            print(clockFile + " exists in working directory")
-            return
-        else:
-            print(fileName + " exists in working directory | Extracting...")
-            Archive(fileName).extractall(os.getcwd())
-            return
+    # if the file exists, nothing else to do
+    if clockpath.exists():
+        print(f"{clockpath.name} exists in {clockpath.parent}")
+        return
+    # if a zip of the file already exists, unzip it, then leave
+    if zipped_path.exists():
+        print(f"{zipped_path.name} exists in {zipped_path.parent} | Extracting...")
+        decompress_on_disk(zipped_path, delete=True)
+        return
     
+    # if this is reached, we proceed to downloading
     internet = check_internet()
     if internet == False:
         raise Warning('No internet connection! | Cannot download clock file')
     
+    # define remote path
     clockFileDir = 'products'
     if int(gpsWeek)<2038:
         intermediateDir = ''
@@ -347,32 +378,31 @@ def get_clock(clockFile, directory=os.getcwd()):
         intermediateDir = 'mgex'
     else:
         intermediateDir = ''
-    
-    file_topath = os.path.join(directory, fileName)
-    fileDir = [server_root, clockFileDir, gpsWeek, intermediateDir, fileName] 
+    fileDir = [server_root, clockFileDir, gpsWeek, intermediateDir, zipped_path.name] 
     ftp = '/'.join(fileDir)
 
     try:
-        print('Downloading:', fileName, end = '')
-        with TqdmUpTo(unit='B', unit_scale=True, unit_divisor=1024, miniters=1, desc=fileName) as t:
-            url.urlretrieve(ftp, file_topath, reporthook=t.update_to)
-        print(' | Download completed for', fileName)
-        return fileName
+        print('Downloading:', zipped_path.name, end = '')
+        with TqdmUpTo(unit='B', unit_scale=True, unit_divisor=1024, miniters=1, desc=zipped_path.name) as t:
+            url.urlretrieve(ftp, zipped_path, reporthook=t.update_to)
+        print(' | Download completed for', zipped_path.name)
+        decompress_on_disk(zipped_path, delete=True)
+        return
     except:
-        print("Requested file", fileName, "cannot be not found in ftp server")
-        fileName = "gfz" + clockFile[3:] + ".Z"
-        file_topath = os.path.join(directory, fileName)
-        fileDir = [server_root, clockFileDir, fileName[3:7], fileName] 
+        print("Requested file", zipped_path.name, "cannot be not found in ftp server")
+        # try alternative name
+        altname = "gfz" + zipped_path.name[3:]
+        fileDir = [server_root, clockFileDir, altname[3:7], altname] 
         ftp = '/'.join(fileDir)
         try:
             print("Looking for GFZ clock file in ftp server...")
-            print('Downloading:', fileName, end = '')
-            with TqdmUpTo(unit='B', unit_scale=True, unit_divisor=1024, miniters=1, desc=fileName) as t:
-                url.urlretrieve(ftp, file_topath, reporthook=t.update_to)
-            print(' | Download completed for', fileName)
-            return fileName
+            print('Downloading:', altname, end = '')
+            with TqdmUpTo(unit='B', unit_scale=True, unit_divisor=1024, miniters=1, desc=zipped_path.name) as t:
+                url.urlretrieve(ftp, zipped_path, reporthook=t.update_to)
+            print(' | Download completed for', zipped_path.name)
+            decompress_on_disk(zipped_path, delete=True)
         except:
-            raise Warning("Requested file", fileName, "cannot be not found in FTP server | Exiting")
+            raise Warning("Requested file", zipped_path.name, "cannot be not found in FTP server | Exiting")
 
 def get_ionosphere(ionFile, directory=os.getcwd()):
     """

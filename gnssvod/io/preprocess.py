@@ -6,32 +6,31 @@ gather_stations merges observations from sites according to specified pairing ru
 # ===========================================================
 # ========================= imports =========================
 import os
-import time
 import glob
-import datetime
 import numpy as np
 import pandas as pd
 import xarray as xr
-import warnings
+import tempfile
 import fnmatch
+from typing import Union
 from gnssvod.io.readFile import read_obsFile
 from gnssvod.funcs.checkif import (isfloat, isint, isexist)
 from gnssvod.funcs.date import doy2date
 from gnssvod.position.interpolation import sp3_interp_fast
 from gnssvod.position.position import gnssDataframe
 from gnssvod.funcs.constants import _system_name
-import pdb
 #-------------------------------------------------------------------------
 #----------------- FILE SELECTION AND BATCH PROCESSING -------------------
 #-------------------------------------------------------------------------
-def preprocess(filepattern,
-               orbit=True,
-               interval=None,
-               keepvars=None,
-               outputdir=None,
-               overwrite=False,
-               compress=True,
-               outputresult=False):
+def preprocess(filepattern: dict,
+               orbit: bool = True,
+               interval: Union[str,None] = None,
+               keepvars: Union[list,None] = None,
+               outputdir: Union[dict, None] = None,
+               overwrite: bool = False,
+               compress: bool = True,
+               outputresult: bool = False,
+               aux_path: Union[str, None] = None):
     """
     Returns lists of Observation objects containing GNSS observations read from RINEX observation files
     
@@ -71,6 +70,11 @@ def preprocess(filepattern,
 
     outputresult: bool (optional)
         If True, observation objects will also be returned as a dictionary
+
+    aux_path: string or None (optional)
+        If orbit is true, some external auxilliary orbit and clock files will be required and automatically downloaded.
+        aux_path sets the directory where these files should be downloaded (or where they may already be found).
+        If None is passed (default), a temporary directory is created and cleaned up if the processing succeeds.
         
     Returns
     -------
@@ -78,6 +82,13 @@ def preprocess(filepattern,
     For example output={'station1':[gnssvod.io.io.Observation,gnssvod.io.io.Observation,...]}
     
     """
+    # set up temporary directory if necessary
+    if orbit and (aux_path is None):
+        tmp_folder = tempfile.TemporaryDirectory()
+        aux_path = tmp_folder.name
+        print(f"Created a temporary directory at {aux_path}")
+    else: 
+        tmp_folder = None
     # grab all files matching the patterns
     filelist = get_filelist(filepattern)
     
@@ -125,10 +136,10 @@ def preprocess(filepattern,
                 # downloads and unzips third-party files in the current directory
                 if not 'orbit_data' in locals():
                     # if there is no previous orbit data, the orbit data is returned as well
-                    x, orbit_data = add_azi_ele(x)
+                    x, orbit_data = add_azi_ele(x, aux_path = aux_path)
                 else:
                     # on following iterations the orbit data is tentatively recycled to reduce computational time
-                    x, orbit_data = add_azi_ele(x, orbit_data)
+                    x, orbit_data = add_azi_ele(x, orbit_data, aux_path = aux_path)
             
             # make sure we drop any duplicates
             x.observation=x.observation[~x.observation.index.duplicated(keep='first')]
@@ -169,6 +180,11 @@ def preprocess(filepattern,
         if outputresult:
             out[station_name]=result
 
+    # clean up temporary directory if one exists
+    if tmp_folder is not None:
+        tmp_folder.cleanup()
+        print(f"Removed the temporary directory at {aux_path}")
+
     if outputresult:
         return out
     else:
@@ -204,7 +220,7 @@ def resample_obs(obs,interval):
     obs.interval = pd.Timedelta(interval).seconds
     return obs
 
-def add_azi_ele(obs, orbit_data=None):
+def add_azi_ele(obs, orbit_data=None, aux_path: Union[str,None] = None):
     start_time = min(obs.observation.index.get_level_values('Epoch'))
     end_time = max(obs.observation.index.get_level_values('Epoch'))
     
@@ -218,7 +234,7 @@ def add_azi_ele(obs, orbit_data=None):
     
     if do:
         # read (=usually download) orbit data
-        orbit = sp3_interp_fast(start_time, end_time, interval=obs.interval)
+        orbit = sp3_interp_fast(start_time, end_time, interval=obs.interval, aux_path=aux_path)
         # prepare an orbit object as well
         orbit_data = orbit
         orbit_data.start_time = orbit.index.get_level_values('Epoch').min()

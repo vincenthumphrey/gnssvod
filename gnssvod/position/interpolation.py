@@ -3,18 +3,19 @@
 import time
 import pandas as _pd
 import numpy as _np
-import pdb
 import datetime as _dt
+from typing import Union
 from datetime import datetime, timedelta
 from gnssvod.io import readFile
 from gnssvod.geodesy.coordinate import cart2ell, geocentric_latitude
-from gnssvod.funcs.funcs import (sp3FileName, clockFileName, ionFileName, coord_interp)
+from gnssvod.funcs.filename import (sp3FileName, clockFileName, ionFileName)
+from gnssvod.funcs.interpolation import coord_interp
 from gnssvod.position.position import _observation_picker_by_band
 # ===========================================================
 
 __all__ = ["sp3_interp", "ionosphere_interp"]
 
-def sp3_interp_fast(start_time, end_time, interval=30, poly_degree=16, sp3_product="gfz", clock_product="gfz"):
+def sp3_interp_fast(start_time, end_time, interval=30, poly_degree=16, sp3_product="gfz", clock_product="gfz", aux_path = Union[str, None]):
     # add a buffer around start and end time
     start_time_withbuff = start_time-_dt.timedelta(hours=2.1)
     end_time_withbuff = end_time+_dt.timedelta(hours=2.1)
@@ -22,8 +23,8 @@ def sp3_interp_fast(start_time, end_time, interval=30, poly_degree=16, sp3_produ
     start_epoch = _dt.date(start_time_withbuff.year,start_time_withbuff.month,start_time_withbuff.day)
     end_epoch = _dt.date(end_time_withbuff.year,end_time_withbuff.month,end_time_withbuff.day)
     epochs = _pd.date_range(start_epoch,end_epoch,freq='d')
-    sp3FileNames = [sp3FileName(x.date(),sp3_product) for x in epochs]
-    clockFileNames = [clockFileName(x.date(),interval,clock_product) for x in epochs]
+    sp3FileNames = [sp3FileName(x.date(),sp3_product,aux_path) for x in epochs]
+    clockFileNames = [clockFileName(x.date(),interval,clock_product,aux_path) for x in epochs]
     #--------------------------------------------------------------------------
     # reading all those files, downloading them if necessary
     sp3 = [readFile.read_sp3File(x) for x in sp3FileNames]

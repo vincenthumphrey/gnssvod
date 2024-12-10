@@ -2,7 +2,9 @@
 # ========================= imports =========================
 import sys
 import datetime
-from gnssvod.funcs.funcs import (gpsweekday, datetime2doy)
+import pathlib
+from typing import Union
+from gnssvod.funcs.date import (gpsweekday, datetime2doy)
 from gnssvod.doc.IGS import IGS, is_IGS
 # ===========================================================
 
@@ -20,7 +22,7 @@ def obsFileName(stationName, date, zipped = False):
     
     return rinexFile
 
-def sp3FileName(epoch, product="gfz"):
+def sp3FileName(epoch: datetime.date, product: str ="gfz", dir: Union[str,None] = None):
     now = datetime.date.today() # today's date
     timeDif = now - epoch # time difference between rinex epoch and today
     gpsWeek, gpsWeekday = gpsweekday(epoch, Datetime = True)
@@ -40,9 +42,12 @@ def sp3FileName(epoch, product="gfz"):
         suffix  = '0000_01D_05M_ORB.SP3'
         sp3File = product.upper() + "_" + epoch.strftime('%Y%j') + suffix
     
+    if not dir is None:
+        sp3File = str(pathlib.Path(dir,sp3File))
+
     return sp3File
 
-def clockFileName(epoch, interval=30, product="cod"):
+def clockFileName(epoch, interval=30, product="cod", dir: Union[str,None] = None):
     now = datetime.date.today()
     timeDif = now - epoch
     gpsWeek, gpsWeekday = gpsweekday(epoch, Datetime = True) 
@@ -67,6 +72,9 @@ def clockFileName(epoch, interval=30, product="cod"):
         product = 'GFZ0MGXRAP'
         suffix  = '0000_01D_30S_CLK.CLK'
         clockFile = product.upper() + "_" + epoch.strftime('%Y%j') + suffix
+
+    if not dir is None:
+        clockFile = str(pathlib.Path(dir,clockFile))
 
     return clockFile
 

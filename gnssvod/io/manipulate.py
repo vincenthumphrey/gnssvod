@@ -5,7 +5,6 @@ Merge split and stuffs...
 # ========================= imports =========================
 import os
 import sys
-import subprocess
 # ===========================================================
 
 __all__ = ["rinex_merge"]

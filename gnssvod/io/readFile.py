@@ -6,17 +6,13 @@ clockFile function reads the clock file
 """
 # ===========================================================
 # ========================= imports =========================
-import os
 import time
 import datetime
 import numpy as np
 import pandas as pd
-import pdb
-from gnssvod.download import get_rinex, get_ionosphere
 from gnssvod.funcs.checkif import (isfloat, isint, isexist)
-from gnssvod.funcs.date import doy2date
 from gnssvod.funcs.constants import _system_name
-from gnssvod.io.io import Observation, Header, Navigation, PEphemeris, _ObservationTypes
+from gnssvod.io.io import Observation, Header, Navigation, _ObservationTypes
 # ===========================================================
 
 #-------------------------------------------------------------------------

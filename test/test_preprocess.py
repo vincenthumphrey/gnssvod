@@ -7,7 +7,7 @@ import pandas as pd
 
 @pytest.mark.parametrize(
     "filepattern",
-    [str(Path("test","rinex","3_03","ReachLaeg1G_raw_20230801000731.23O")),
+    [str(Path("test","rinex","3_03","ReachLaeg1G_raw_20230801010733.23O")),
      str(Path("test","rinex","3_03","*.*O"))]
 )
 def test_preprocess(filepattern: str, tmp_path: Path) -> None:
@@ -17,9 +17,12 @@ def test_preprocess(filepattern: str, tmp_path: Path) -> None:
                      keepvars=['S?','S??'],
                      outputdir={'dummy_station':tmp_path},
                      compress=True,
-                     outputresult=True)
+                     outputresult=True,
+                     aux_path=tmp_path)
     # check output is a dict
     assert(isinstance(out,dict))
+    # check output is not an empty list
+    assert(len(out['dummy_station'])>0)
     # check elements of list are Observation
     assert(all(isinstance(x,Observation) for x in out['dummy_station']))
     # check all expected output .nc files exist
