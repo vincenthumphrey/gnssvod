@@ -1,6 +1,10 @@
 """
 Class definitions for I/O opreations
 """
+# ===========================================================
+# ========================= imports =========================
+import xarray as xr
+
 # ======================================================================
 class Observation:
     """
@@ -19,6 +23,14 @@ class Observation:
         self.receiver_clock    = receiver_clock
         self.version           = version
         self.observation_types = observation_types
+
+    def to_xarray(self) -> xr.Dataset:
+        ds = self.observation.to_xarray()
+        ds = ds.assign_attrs({'filename' : self.filename,
+                            'observation_types' : self.observation_types,
+                            'epoch' : self.epoch.isoformat(),
+                            'approx_position' : self.approx_position})
+        return ds
 
 class _ObservationTypes:
     def __init__(self, ToB_GPS=None, ToB_GLONASS=None, ToB_GALILEO=None,

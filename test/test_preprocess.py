@@ -16,7 +16,7 @@ def test_preprocess(filepattern: str, tmp_path: Path) -> None:
                      interval='15s',
                      keepvars=['S?','S??'],
                      outputdir={'dummy_station':tmp_path},
-                     compress=True,
+                     encoding='default',
                      outputresult=True,
                      aux_path=tmp_path)
     # check output is a dict
@@ -31,19 +31,24 @@ def test_preprocess(filepattern: str, tmp_path: Path) -> None:
 def test_gather_stations(tmp_path: Path) -> None:
     pattern={'Laeg2_Twr':str(Path("test","nc_raw","ReachLaeg2T_*")),
          'Laeg1_Grnd':str(Path("test","nc_raw","ReachLaeg1G_*"))}
-    startday = pd.to_datetime('01-08-2023',format='%d-%m-%Y')
-    timeintervals=pd.interval_range(start=startday, periods=3, freq='D', closed='left')
+    startday = pd.to_datetime('31-07-2023',format='%d-%m-%Y')
+    timeintervals=pd.interval_range(start=startday, periods=4, freq='D', closed='left')
     pairings={'Laeg':('Laeg2_Twr','Laeg1_Grnd')}
     # run function
     out = gather_stations(filepattern=pattern,
                           pairings=pairings,
                           timeintervals=timeintervals,
                           outputdir={'Laeg':tmp_path},
-                          compress=True)
+                          encoding='default',
+                          outputresult=True)
     # check output is a dict
     assert(isinstance(out,dict))
-    # check elements of list are tuple with interval and dataframe
-    assert(all(isinstance(x[0],pd.Interval) for x in out['Laeg']))
-    assert(all(isinstance(x[1],pd.DataFrame) for x in out['Laeg']))
+    # check item is pd.DataFrame
+    assert(isinstance(out['Laeg'],pd.DataFrame))
     # check all expected output .nc files exist
-    assert(all(os.path.exists(tmp_path/(f"Laeg_{x[0].left.strftime('%Y%m%d%H%M%S')}_{x[0].right.strftime('%Y%m%d%H%M%S')}.nc")) for x in out['Laeg']))
+    startday = pd.to_datetime('01-08-2023',format='%d-%m-%Y')
+    timeintervals=pd.interval_range(start=startday, periods=2, freq='D', closed='left')
+    for interval in timeintervals:
+        ts = f"{interval.left.strftime('%Y%m%d%H%M%S')}_{interval.right.strftime('%Y%m%d%H%M%S')}"
+        filename = f"{'Laeg'}_{ts}.nc"
+        assert(os.path.exists(tmp_path/filename))
