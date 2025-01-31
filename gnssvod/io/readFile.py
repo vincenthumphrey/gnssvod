@@ -330,7 +330,7 @@ def read_obsFile_v2(observationFile,header=False):
                     obsLines[i+j] += ' '*(80-lineLenght)
                 if j!=0:
                     obsLines[i] += obsLines[i+j]
-            obsLines[i] = [float(obsLines[i][j:j+14]) if isfloat(obsLines[i][j:j+14])==True else None for j in range(0, 80*rowNumber, 16)]
+            obsLines[i] = [float(obsLines[i][j:j+14]) if isfloat(obsLines[i][j:j+14])==True else np.nan for j in range(0, 80*rowNumber, 16)]
             if len(obsLines[i]) != obsNumber:
                 del obsLines[i][-(len(obsLines[i])-obsNumber):]
             obsLines[i].append(epoch)
@@ -555,23 +555,23 @@ def read_obsFile_v3(obsFileName,header):
             # =============================================================================
             epoch_SVNumber = int(epoch_SVNumber)
             for svLine in range(currentline,currentline+epoch_SVNumber):
-                obsEpoch = np.full((1,len(ToB)), None)
+                obsEpoch = np.full((1,len(ToB)), np.nan)
                 svList.append(obsLines[svLine][:3])
                 if obsLines[svLine].startswith("G"):
-                    obsEpoch[0,index_GPS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_GPS)*16,16)]])
+                    obsEpoch[0,index_GPS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else np.nan for i in range(0,len(ToB_GPS)*16,16)]])
                 elif obsLines[svLine].startswith("R"):
-                    obsEpoch[0,index_GLONASS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_GLONASS)*16,16)]])
+                    obsEpoch[0,index_GLONASS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else np.nan for i in range(0,len(ToB_GLONASS)*16,16)]])
                     #obsEpoch[svLine,index_GLONASS]
                 elif obsLines[svLine].startswith("E"):
-                    obsEpoch[0,index_GALILEO] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_GALILEO)*16,16)]])
+                    obsEpoch[0,index_GALILEO] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else np.nan for i in range(0,len(ToB_GALILEO)*16,16)]])
                 elif obsLines[svLine].startswith("C"):
-                    obsEpoch[0,index_COMPASS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_COMPASS)*16,16)]])
+                    obsEpoch[0,index_COMPASS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else np.nan for i in range(0,len(ToB_COMPASS)*16,16)]])
                 elif obsLines[svLine].startswith("J"):
-                    obsEpoch[0,index_QZSS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_QZSS)*16,16)]])
+                    obsEpoch[0,index_QZSS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else np.nan for i in range(0,len(ToB_QZSS)*16,16)]])
                 elif obsLines[svLine].startswith("I"):
-                    obsEpoch[0,index_IRSS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_IRSS)*16,16)]])
+                    obsEpoch[0,index_IRSS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else np.nan for i in range(0,len(ToB_IRSS)*16,16)]])
                 elif obsLines[svLine].startswith("S"):
-                    obsEpoch[0,index_SBAS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else None for i in range(0,len(ToB_SBAS)*16,16)]])
+                    obsEpoch[0,index_SBAS] = np.array([[float(obsLines[svLine][3:][i:i+14]) if isfloat(obsLines[svLine][3:][i:i+14])==True else np.nan for i in range(0,len(ToB_SBAS)*16,16)]])
                 obsEpoch = np.append(obsEpoch,epoch)
                 obsList.append(obsEpoch)
             # =============================================================================

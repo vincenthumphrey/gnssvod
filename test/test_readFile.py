@@ -7,12 +7,13 @@ import pytest
 
 ### Test reading rinex observation files
 
-#TODO fix test failing if folder has a dot in the name (e.g. "2.11" instead of "2_11" due to funcs/checkif.py)
+#TODO fix function failing if folder has a dot in the name (e.g. "2.11" instead of "2_11" due to funcs/checkif.py)
 
 @pytest.mark.parametrize(
     "path",
     [str(Path("test","rinex","2_11","Reach_Dav1_Grnd-raw_202104282106.21O")),
-     str(Path("test","rinex","3_03","ReachLaeg1G_raw_20230801230811.23O"))]
+     str(Path("test","rinex","3_03","ReachLaeg1G_raw_20230801230811.23O")),
+     str(Path("test","rinex","special_cases","MACROCOSM-2_raw_202401281751.24O"))]
 )
 def test_readFile(path: str) -> None:
     assert(isinstance(read_obsFile(path),Observation))
