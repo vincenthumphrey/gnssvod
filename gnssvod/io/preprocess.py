@@ -29,7 +29,7 @@ def preprocess(filepattern: dict,
                keepvars: Union[list,None] = None,
                outputdir: Union[dict, None] = None,
                overwrite: bool = False,
-               encoding: Union[None, Literal['default'], dict] = None,
+               encoding: Union[None, Literal['default'], dict] = 'default',
                outputresult: bool = False,
                aux_path: Union[str, None] = None,
                approx_position: list[float] = None) -> dict[Any,list[Observation]]:
@@ -329,8 +329,8 @@ def gather_stations(filepattern: dict,
         
     Returns
     -------
-    If outputresult = True, returns a dictionary. There is one key per case, and the corresponding item is an
-    xr.Dataset containing the paired data.
+    If outputresult = True, returns a dictionary. There is one key per case, and the corresponding item is a
+    pd.Dataframe containing the paired data.
     
     """
     # get all files for all stations
@@ -382,9 +382,9 @@ def gather_stations(filepattern: dict,
                 # only keep required vars and drop potential empty rows
                 if keepvars is not None:
                     iout = subset_vars(iout,keepvars,force_epoch_system=False)
-                    if len(iout)>0:
+                    if len(iout)==0:
                         print(f"No observations left after subsetting columns (argument 'keepvars')")
-                    continue
+                        continue
                 
                 # output the data as .nc if required
                 if outputdir:
