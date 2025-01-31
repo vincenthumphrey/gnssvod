@@ -17,8 +17,6 @@ from typing import Union, Literal, Any
 from gnssvod.io.io import Observation
 from gnssvod.io.readFile import read_obsFile
 from gnssvod.io.exporters import export_as_nc
-from gnssvod.funcs.checkif import (isfloat, isint, isexist)
-from gnssvod.funcs.date import doy2date
 from gnssvod.position.interpolation import sp3_interp_fast
 from gnssvod.position.position import gnssDataframe
 from gnssvod.funcs.constants import _system_name
@@ -33,7 +31,8 @@ def preprocess(filepattern: dict,
                overwrite: bool = False,
                encoding: Union[None, Literal['default'], dict] = None,
                outputresult: bool = False,
-               aux_path: Union[str, None] = None) -> dict[Any,list[Observation]]:
+               aux_path: Union[str, None] = None,
+               approx_position: list[float] = None) -> dict[Any,list[Observation]]:
     """
     Reads and processes structured lists of RINEX observation files.
     
@@ -72,7 +71,7 @@ def preprocess(filepattern: dict,
         finer customization of the encoding.
 
     overwrite: bool (optional)
-        If False (default), RINEX files with an existing matching files in the 
+        If False (default), RINEX files with an existing matching file in the 
         specified output directory will be skipped entirely
 
     outputresult: bool (optional)
@@ -82,7 +81,14 @@ def preprocess(filepattern: dict,
         If orbit is true, some external auxilliary orbit and clock files will be required and automatically downloaded.
         aux_path sets the directory where these files should be downloaded (or where they may already be found).
         If None is passed (default), a temporary directory is created and cleaned up if the processing succeeds.
-        
+
+    approx_position: list (optional)
+        Position of the antenna provided as a list of cartesian coordinates [X,Y,Z]. This argument can be used to replace the 
+        approximate position taken from the source RINEX files. 
+        It is mandatory if source RINEX files actually miss the "APPROX POSITION XYZ" information in the header and the 
+        'orbit' option is True. 
+        To convert geographic coordinates (lat, lon, h) to cartesian (X,Y,Z) use gnssvod.geodesy.coordinate.ell2cart(lat,lon,h).
+
     Returns
     -------
     If outputresult = True, returns a dictionary. There is one key per station name and each item contains the GNSS observation object read 
@@ -131,13 +137,19 @@ def preprocess(filepattern: dict,
                 x.observation = subset_vars(x.observation,keepvars)
                 # update the observation_types list
                 x.observation_types = x.observation.columns.to_list()
-                
+
             # resample if required
             if interval is not None:
                 x = resample_obs(x,interval)
                 
             # calculate Azimuth and Elevation if required
             if orbit:
+                # use a prescribed position if one was passed as argument
+                if approx_position is not None:
+                    x.approx_position = approx_position
+                # check that an approximate position exists before proceeding
+                if (x.approx_position == [0,0,0]) or (x.approx_position is None):
+                    raise ValueError("Missing an approximate antenna position. Provide the argument 'approx_position' to preprocess()")
                 print(f"Calculating Azimuth and Elevation")
                 # note: orbit cannot be parallelized easily because it 
                 # downloads and unzips third-party files in the current directory
@@ -147,7 +159,7 @@ def preprocess(filepattern: dict,
                 else:
                     # on following iterations the orbit data is tentatively recycled to reduce computational time
                     x, orbit_data = add_azi_ele(x, orbit_data, aux_path = aux_path)
-            
+
             # make sure we drop any duplicates
             x.observation=x.observation[~x.observation.index.duplicated(keep='first')]
             
@@ -177,7 +189,9 @@ def preprocess(filepattern: dict,
     else:
         return
 
-def subset_vars(df,keepvars,force_epoch_system=True):
+def subset_vars(df: pd.DataFrame,
+                keepvars: list,
+                force_epoch_system: bool = True) -> pd.DataFrame:
     # find all matches for all elements of keepvars
     keepvars = np.concatenate([fnmatch.filter(df.columns.tolist(),x) for x in keepvars])
     # subselect those of the required columns that are present 
@@ -196,7 +210,7 @@ def subset_vars(df,keepvars,force_epoch_system=True):
     df = df.dropna(how='all')
     return df
 
-def resample_obs(obs,interval):
+def resample_obs(obs: Observation, interval: str) -> Observation:
     # list all variables except SYSTEM and epoch as these are handled differently
     subset = np.setdiff1d(obs.observation.columns.to_list(),['epoch','SYSTEM'])
     # resample those variables using temporal averaging
@@ -207,7 +221,9 @@ def resample_obs(obs,interval):
     obs.interval = pd.Timedelta(interval).seconds
     return obs
 
-def add_azi_ele(obs, orbit_data=None, aux_path: Union[str,None] = None):
+def add_azi_ele(obs: Observation, 
+                orbit_data: Union[pd.DataFrame,None] = None, 
+                aux_path: Union[str,None] = None) -> tuple[Observation,pd.DataFrame]:
     start_time = min(obs.observation.index.get_level_values('Epoch'))
     end_time = max(obs.observation.index.get_level_values('Epoch'))
     
@@ -240,7 +256,7 @@ def add_azi_ele(obs, orbit_data=None, aux_path: Union[str,None] = None):
     obs.observation_types = obs.observation.columns.to_list()
     return obs, orbit_data
 
-def get_filelist(filepatterns):
+def get_filelist(filepatterns: dict) -> dict:
     if not isinstance(filepatterns,dict):
         raise Exception(f"Expected the input of get_filelist to be a dictionary, got a {type(filepatterns)} instead")
     filelists = dict()

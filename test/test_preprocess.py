@@ -1,16 +1,23 @@
 from pathlib import Path
 from gnssvod.io.preprocess import preprocess, gather_stations
 from gnssvod.io.io import Observation
+from gnssvod.geodesy.coordinate import cart2ell, ell2cart
 import pytest
 import os
 import pandas as pd
 
 @pytest.mark.parametrize(
-    "filepattern",
-    [str(Path("test","rinex","3_03","ReachLaeg1G_raw_20230801010733.23O")),
-     str(Path("test","rinex","3_03","*.*O"))]
+    "filepattern, approx_position",
+    [
+        (str(Path("test","rinex","3_03","ReachLaeg1G_raw_20230801010733.23O")),
+         None),
+        (str(Path("test","rinex","3_03","*.*O")),
+         None),
+        (str(Path("test","rinex","special_cases","MACROCOSM-2_raw_202401281751.24O")),
+         [2481150.1472, -5525646.5039, 1992267.2964])
+    ]
 )
-def test_preprocess(filepattern: str, tmp_path: Path) -> None:
+def test_preprocess(filepattern: str, approx_position: list, tmp_path: Path) -> None:
     out = preprocess({'dummy_station':filepattern},
                      orbit=True,
                      interval='15s',
@@ -18,7 +25,8 @@ def test_preprocess(filepattern: str, tmp_path: Path) -> None:
                      outputdir={'dummy_station':tmp_path},
                      encoding='default',
                      outputresult=True,
-                     aux_path=tmp_path)
+                     aux_path=tmp_path,
+                     approx_position=approx_position)
     # check output is a dict
     assert(isinstance(out,dict))
     # check output is not an empty list
