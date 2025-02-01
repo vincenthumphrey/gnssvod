@@ -7,10 +7,14 @@ Python Toolkit for deriving Vegetation Optical Depth (VOD) from pairs of GNSS re
 
 ### Installation
 
-Directly install package from GitHub via
+Directly install package from PyPI via
 ```
-pip install git+https://github.com/vincenthumphrey/gnssvod
+pip install gnssvod
 ```
+
+### Versions
+
+Refer to the [list of changes](CHANGELOG.md)
 
 ### Usage
 
