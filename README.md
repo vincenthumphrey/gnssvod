@@ -1,4 +1,4 @@
-# GNSSVOD
+# GNSSVOD v2025.1.1
 Python Toolkit for deriving Vegetation Optical Depth (VOD) from pairs of GNSS receivers developed by Vincent Humphrey (vincent.humphrey@geo.uzh.ch). Many functions are based on the GNSSpy Toolkit.
 
 ![illustration image](examples/figures/illustration_snr.png)
@@ -7,10 +7,14 @@ Python Toolkit for deriving Vegetation Optical Depth (VOD) from pairs of GNSS re
 
 ### Installation
 
-Directly install package from GitHub via
+Directly install package from PyPI via
 ```
-pip install git+https://github.com/vincenthumphrey/gnssvod
+pip install gnssvod
 ```
+
+### Versions
+
+Refer to the [list of changes](CHANGELOG.md)
 
 ### Usage
 
