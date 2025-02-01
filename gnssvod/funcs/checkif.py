@@ -1,10 +1,10 @@
 # ===========================================================
 # ========================= imports =========================
 import os
-import http.client
+from pathlib import Path
+from gnssvod.funcs.date import doy2date
 from gnssvod import download
 from gnssvod.doc.IGS import is_IGS
-from gnssvod.funcs.date import doy2date
 from hatanaka import decompress_on_disk
 # ===========================================================
 
@@ -23,17 +23,6 @@ def isint(value):
         int(value)
         return True
     except ValueError:
-        return False
-
-def check_internet():
-    """ To check if there is an internet connection for FTP downloads """
-    connection = http.client.HTTPConnection("www.google.com", timeout=5)
-    try:
-        connection.request("HEAD", "/")
-        connection.close()
-        return True
-    except:
-        connection.close()
         return False
     
 def iszip(fileName):
@@ -60,7 +49,7 @@ def isexist(fileName):
             # --------- case where neither a file nor a zip of the file exist ------------
             print(f"This file does not exist: {fileName}")
             # --------- a download is attempted -------------------------
-            extension = fileName.split(".")[1].lower()
+            extension = Path(fileName).suffix[1:].lower()
             if extension[-1] == "o":
                 if is_IGS(fileName[:4]):
                     print(fileName + ".Z does not exist in working directory | Downloading...")
@@ -95,11 +84,9 @@ def isexist(fileName):
                     download.get_navigation([fileName[:4]], fileEpoch, Datetime = True)
                     decompress_on_disk(fileName + ".gz", delete=True)
             elif extension in {"clk","clk_05s"}:
-                downloadName = download.get_clock(fileName)
-                decompress_on_disk(downloadName, delete=True)
+                download.get_clock(fileName)
             elif extension == "sp3":
-                downloadName = download.get_sp3(fileName)
-                decompress_on_disk(downloadName, delete=True)
+                download.get_sp3(fileName)
             elif extension[-1].lower() == "i":
                 download.get_ionosphere(fileName)
                 decompress_on_disk(fileName + ".gz", delete=True)

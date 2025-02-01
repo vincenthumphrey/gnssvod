@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "gnssvod"
+version = "2024.12.0"
+description = "Read GNSS receiver output files and analyse vegetation optical depth (VOD)"
+authors = ["Vincent Humphrey <vincent.humphrey@meteoswiss.ch>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+numpy = "^1.25.0"
+xarray = {version = ">=2022.12.0", extras = ["io", "parallel"]}
+tqdm = "^4.60.0"
+hatanaka = "^2.8.1"
+pyunpack = "^0.3"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+Sphinx = "7.4.0"
+black = "^24.10.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

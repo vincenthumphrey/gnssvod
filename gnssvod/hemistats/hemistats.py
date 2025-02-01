@@ -77,7 +77,7 @@ class Hemi:
                 idf[idname] = pd.Series(dtype=int)
                 return(idf[idname])
             # find out which band we are in
-            iele = idf.eleind[0]
+            iele = idf['eleind'].iloc[0]
             # retrieve the corresponding azimuthal edges
             iazilims = self.azilims[iele]
             # cut data with azimuthal edges to retrieve azimuthal index
@@ -90,7 +90,7 @@ class Hemi:
             return(idf[idname])
 
         # apply the azicut function to each elevation band
-        idf=idf.groupby('eleind',group_keys=False).apply(azicut) # groupby will drop rows with eleind=NaN
+        idf=idf.groupby('eleind',group_keys=False, observed=False)[['eleind',aziname]].apply(azicut) # groupby will drop rows with eleind=NaN
         if idname in df:
             df = df.drop(columns=idname)
         # if drop is True, we are returning the input df with only rows that have a CellID
