@@ -1,4 +1,4 @@
-# v2025.1.1
+## v2025.1.2
 This version focuses mainly on making the package more robust and maintainable in the long run.
 ### Breaking changes
 - Argument `compress` in `preprocess()` and `gather_stations()` is replaced with argument `encoding`. By default `encoding` is set to `'default'` which enables compression. Compression can be skipped by passing `encoding = None` or encoding options interpretable by `xarray.DataSet.to_netcdf()` can be passed as a dictionary.
